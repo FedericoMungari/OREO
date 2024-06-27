@@ -49,13 +49,9 @@ Then, run the Python script "NumericalTest.py" with the desired parameters, or r
 If you have used our work in your research, please consider citing our paper (preprint version):
 
 ```
-@misc{mungari2024oreooranintelligenceorchestration,
-      title={OREO: O-RAN intElligence Orchestration of xApp-based network services}, 
-      author={Federico Mungari and Corrado Puligheddu and Andres Garcia-Saavedra and Carla Fabiana Chiasserini},
-      year={2024},
-      eprint={2405.18198},
-      archivePrefix={arXiv},
-      primaryClass={cs.NI},
-      url={https://arxiv.org/abs/2405.18198}, 
-}
+@INPROCEEDINGS{oreo_infocom2024,
+  author={Mungari, Federico and Puligheddu, Corrado and Garcia-Saavedra, Andres and Chiasserini, Carla Fabiana},
+  booktitle={IEEE INFOCOM 2024 - IEEE Conference on Computer Communications}, 
+  title={OREO: O-RAN intElligence Orchestration of xApp-based network services}, 
+  year={2024}}
 ```
