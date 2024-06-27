@@ -227,9 +227,9 @@ def main():
     LB_notlagrangian_list = []
     LB_lagrangian_list = []
 
-    UB_list = []
-    UB_notlagrangian_list = []
-    UB_lagrangian_list = []
+    ZB_list = []
+    ZB_notlagrangian_list = []
+    ZB_lagrangian_list = []
 
     LB_obj_list = []
     LB_norm_obj_list = []
@@ -237,11 +237,11 @@ def main():
     LB_tau_list = []
     LB_nserv_list = []
 
-    UB_obj_list = []
-    UB_norm_obj_list = []
-    UB_q_list = []
-    UB_tau_list = []
-    UB_nserv_list = []
+    ZB_obj_list = []
+    ZB_norm_obj_list = []
+    ZB_q_list = []
+    ZB_tau_list = []
+    ZB_nserv_list = []
 
     BLB = -10000
     BLB_lagrangian = +1 * BLB
@@ -250,17 +250,17 @@ def main():
     BLB_norm_obj = +1 * BLB
 
     BUB = -1 * BLB
-    BUB_lagrangian = -1 * BLB
-    BUB_notlagrangian = -1 * BLB
-    BUB_obj = -1 * BLB
-    BUB_norm_obj = -1 * BLB
+    BZB_lagrangian = -1 * BLB
+    BZB_notlagrangian = -1 * BLB
+    BZB_obj = -1 * BLB
+    BZB_norm_obj = -1 * BLB
 
     xApps_in_lp2_list = []
-    xApps_in_UB_list = []
+    xApps_in_ZB_list = []
 
     UB = 0
-    UB_obj = 0
-    UB_norm_obj = 0
+    ZB_obj = 0
+    ZB_norm_obj = 0
     LB = 0
     LB_obj = 0
     LB_norm_obj = 0
@@ -548,7 +548,7 @@ def main():
         # ##################################################################################################################
         # UB computation
         EnsuringFeasibility_t_start = time()
-        z_UB, v_UB, n_aux_UB, rho_UB, UB_lagrangian, UB_notlagrangian, UB_obj, UB_norm_obj, q_UB, tau_UB = \
+        z_UB, v_UB, n_aux_UB, rho_UB, ZB_lagrangian, ZB_notlagrangian, ZB_obj, ZB_norm_obj, q_UB, tau_UB = \
             EnsuringFeasibility(services_prime, services_notprime,
                                   services_P, services_Q, services_L,
                                   services_conf_prime, services_conf_notprime,
@@ -566,31 +566,31 @@ def main():
 
         dict_tmp = {k: v for k, v in n_aux_UB.items() if v >= 0.5}
         xApps_in_UB = len(dict_tmp)
-        xApps_in_UB_list.append(xApps_in_UB)
+        xApps_in_ZB_list.append(xApps_in_UB)
 
         BoundComp_t_start2 = time()
-        UB = UB_lagrangian
+        UB = ZB_lagrangian
 
         n_serv_counter = 0
         for key in z_UB:
             n_serv_counter += z_UB[key]
-        UB_nserv_list.append(n_serv_counter)
-        UB_list.append(UB)
-        UB_notlagrangian_list.append(UB_notlagrangian)
-        UB_lagrangian_list.append(UB_lagrangian)
-        UB_obj_list.append(UB_obj)
-        UB_norm_obj_list.append(UB_norm_obj)
-        UB_q_list.append(q_UB)
-        UB_tau_list.append(tau_UB)
+        ZB_nserv_list.append(n_serv_counter)
+        ZB_list.append(UB)
+        ZB_notlagrangian_list.append(ZB_notlagrangian)
+        ZB_lagrangian_list.append(ZB_lagrangian)
+        ZB_obj_list.append(ZB_obj)
+        ZB_norm_obj_list.append(ZB_norm_obj)
+        ZB_q_list.append(q_UB)
+        ZB_tau_list.append(tau_UB)
 
 
-        if (UB_notlagrangian < BUB_notlagrangian) and (iteration!=0):
+        if (ZB_notlagrangian < BZB_notlagrangian) and (iteration!=0):
             best_iteration_UB = iteration
             BUB = UB
-            BUB_notlagrangian = UB_notlagrangian
-            BUB_lagrangian = UB_lagrangian
-            BUB_obj = UB_obj
-            BUB_norm_obj = UB_norm_obj
+            BZB_notlagrangian = ZB_notlagrangian
+            BZB_lagrangian = ZB_lagrangian
+            BZB_obj = ZB_obj
+            BZB_norm_obj = ZB_norm_obj
             best_z_UB = z_UB.copy()
             best_v_UB = v_UB.copy()
             best_n_aux_UB = n_aux_UB.copy()
@@ -603,7 +603,7 @@ def main():
 
         BoundComp_t_end2 = time()
 
-        if (UB_notlagrangian // 0.0001 > BUB_notlagrangian // 0.0001):
+        if (ZB_notlagrangian // 0.0001 > BZB_notlagrangian // 0.0001):
                 counter_stepsize += 1
         else:
             counter_stepsize = 0
@@ -618,7 +618,7 @@ def main():
 
         Subgradient_t_start = time()
 
-        step_size_it_num = step_size * (UB_notlagrangian - LB_notlagrangian)
+        step_size_it_num = step_size * (ZB_notlagrangian - LB_notlagrangian)
 
 
         step_size_it_den_1 = (gp.quicksum(gp.quicksum(gp.quicksum(((z_LB[s,list(cs.keys())[0]] - gp.quicksum(gp.quicksum(
@@ -706,7 +706,7 @@ def main():
         Subgradient_t_end = time()
 
 
-        if (UB_notlagrangian - LB_notlagrangian < minimum_bound_gap):
+        if (ZB_notlagrangian - LB_notlagrangian < minimum_bound_gap):
             counter_bound += 1
             step_size = step_size / 2
             if timelimit != None and timelimit > 0:
@@ -720,7 +720,7 @@ def main():
 
         Heuristic_t_iter_end = time()
 
-        gap_history.append(UB_notlagrangian - LB_notlagrangian)
+        gap_history.append(ZB_notlagrangian - LB_notlagrangian)
         if len(gap_history) > N_consecutive_times_gap and all(abs(((gap_history[-1]) - gap) / (gap_history[-1])) < 0.02 for gap in gap_history[-N_consecutive_times_gap:]):
             break  # Gap has stabilized, stop iterating
 
@@ -855,13 +855,14 @@ def main():
 
     print("\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*")
     print("*-*-*-*-*-*TOTAL OREO TIME:,", t_end - t_start,"*-*-*-*-*-*-*")
-    print("*-*-*-*-*-*OREO NORM. OBJ:,", BUB_norm_obj,"*-*-*-*-*-*-*")
-    print("*-*-*-*-*-*OREO SERVICES:,", max(UB_nserv_list),"*-*-*-*-*-*-*")
+    print("*-*-*-*-*-*OREO NORM. OBJ:,", BZB_norm_obj,"*-*-*-*-*-*-*")
+    print("*-*-*-*-*-*OREO SERVICES:,", max(ZB_nserv_list),"*-*-*-*-*-*-*")
     print("*-*-*-*-*-*OREO CPU:,", TotCPU_feasible, "*-*-*-*-*-*-*-*")
     print("*-*-*-*-*-*OREO DISK:,", TotDisk_feasible, "*-*-*-*-*-*-*-*")
     print("*-*-*-*-*-*OREO MEM:,", TotRAM_feasible, "*-*-*-*-*-*-*-*")
     print("*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*")
 
+    return best_z_UB, best_v_UB, best_rho_UB
 
     # #################################################################################################################
 
