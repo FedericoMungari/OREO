@@ -1,0 +1,72 @@
+{
+  "services": ["traffic_forecasting","traffic_classification","network_slicing"],
+  "services_L": {"traffic_forecasting": 0.3, "traffic_classification": 0.5, "network_slicing": 0.5},
+  "services_Q": {"traffic_forecasting": 0.8, "traffic_classification": 0.90, "network_slicing": 0.90},
+  "services_P": {"traffic_forecasting": 2, "traffic_classification": 1, "network_slicing": 3},
+  "service_freq": {"traffic_forecasting": 1, "traffic_classification": 0.1, "network_slicing": 4},
+  "functions": ["traffic_forecaster","traffic_classificator","network_slicer"],
+  "functions_compl": {"traffic_forecaster": [0, 1], "traffic_classificator": [0], "network_slicer": [0, 1]},
+  "services_conf": {
+    "traffic_forecasting": [{"cs_tf_0": ["traffic_forecaster"]}],
+    "traffic_classification": [{"cs_tc_0": ["traffic_classificator"]}],
+    "network_slicing": [
+      {"cs_ns_0": ["traffic_forecaster", "traffic_classificator", "network_slicer"]},
+      {"cs_ns_1": ["traffic_forecaster", "network_slicer"]},
+      {"cs_ns_2": ["traffic_classificator", "network_slicer"]},
+      {"cs_ns_3": ["network_slicer"]}
+    ]
+  },
+  "resource": ["cpu", "mem", "disk"],
+  "budget": {"cpu": 1600, "mem": 16, "disk": 1024},
+  "xApp_mem_req": {
+    "(traffic_forecaster, 0, mem)": 0.5,
+    "(traffic_forecaster, 0, disk)": 100,
+    "(traffic_forecaster, 1, mem)": 0.8,
+    "(traffic_forecaster, 1, disk)": 130,
+    "(traffic_classificator, 0, mem)": 1.5,
+    "(traffic_classificator, 0, disk)": 120,
+    "(network_slicer, 0, mem)": 2.9,
+    "(network_slicer, 0, disk)": 210,
+    "(network_slicer, 1, mem)": 3.6,
+    "(network_slicer, 1, disk)": 260
+  },
+  "theta": {
+    "(traffic_forecaster, 0)": 1.3,
+    "(traffic_forecaster, 1)": 1.2,
+    "(traffic_classificator, 0)": 0.9,
+    "(network_slicer, 0)": 0.7,
+    "(network_slicer, 1)": 0.5
+  },
+  "semantic": {
+    "traffic_forecaster": {"sem0": ["cs_tf_0", "cs_ns_0", "cs_ns_1"]},
+    "traffic_classificator": {"sem0": ["cs_tc_0", "cs_ns_0", "cs_ns_2"]},
+    "network_slicer": {"sem0": ["cs_ns_0","cs_ns_1","cs_ns_2","cs_ns_3"]}
+  },
+  "services_conf_graph": {
+    "cs_tf_0": ["traffic_forecaster"],
+    "cs_tc_0": ["traffic_classificator"],
+    "cs_ns_0": {
+      "traffic_classificator": {"network_slicer": {"weight": 1}},
+      "traffic_forecaster": {"network_slicer": {"weight": 1}}
+    },
+    "cs_ns_1": {"traffic_forecaster": {"network_slicer": {"weight": 1}}},
+    "cs_ns_2": {"traffic_classificator": {"network_slicer": {"weight": 1}}},
+    "cs_ns_3": ["network_slicer"]
+  },
+  "service_output_quality": {
+    "cs_tc_0": {"(traffic_classificator,0)": 0.92},
+    "cs_tf_0": {"(traffic_forecaster,0)": 0.85, "(traffic_forecaster,1)": 0.95},
+    "cs_ns_0": {"(traffic_forecaster,0),(traffic_classificator,0),(network_slicer,0)": 0.81,
+                "(traffic_forecaster,1),(traffic_classificator,0),(network_slicer,0)": 0.87,
+                "(traffic_forecaster,0),(traffic_classificator,0),(network_slicer,1)": 0.95,
+                "(traffic_forecaster,1),(traffic_classificator,0),(network_slicer,1)": 0.98},
+    "cs_ns_1": {"(traffic_forecaster,0),(network_slicer,0)": 0.82,
+                "(traffic_forecaster,1),(network_slicer,0)": 0.84,
+                "(traffic_forecaster,0),(network_slicer,1)": 0.86,
+                "(traffic_forecaster,1),(network_slicer,1)": 0.91},
+    "cs_ns_2": {"(traffic_classificator,0),(network_slicer,0)": 0.81,
+                "(traffic_classificator,0),(network_slicer,1)": 0.85},
+    "cs_ns_3": {"(network_slicer,0)": 0.79,
+                "(network_slicer,1)": 0.82}
+  }
+}
