@@ -918,9 +918,12 @@ def ServiceQualityAdjustment(services,s,services_L,services_P,services_Q,service
 
     actual_quality = act_quality_comp(current_config, cs, quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c)
 
-    if actual_quality > services_Q[s]:
-        q_UB[list(cs.keys())[0]] = actual_quality
-        return z_UB, v_UB, rho_UB, q_UB, n_aux_UB, lambda_aux_UB
+    try:
+        if actual_quality > services_Q[s]:
+            q_UB[list(cs.keys())[0]] = actual_quality
+            return z_UB, v_UB, rho_UB, q_UB, n_aux_UB, lambda_aux_UB
+    except:
+        return -1
     # else:
     #     print("Need improvement!")
 
@@ -1158,6 +1161,10 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
     if normalization_factor == None:
         normalization_factor = 1
 
+    z = {k: 1 if v > 0.5 else 0 for k, v in z.items()}
+    v = {k: 1 if v > 0.5 else 0 for k, v in v.items()}
+    n_aux = {k: 1 if v > 0.5 else 0 for k, v in n_aux.items()}
+
     removed_services_flag = False
 
     z_UB, v_UB, n_aux_UB, rho_UB, q_UB, tau_UB, n_aux_prime, lambda_aux_UB, lambda_aux_prime = \
@@ -1309,6 +1316,14 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
                                                     J_MAX,
                                                     normalization_factor = normalization_factor)
 
-
+    for f in functions:
+        for c in functions_compl[f]:
+            for j in range(1, J_MAX + 1):
+                counter = 0
+                for cs in cs_list:
+                    counter += v_UB[cs,f,c,j]
+                if counter < 0.5:
+                    for r in budget:
+                        rho_UB[f,c,j,r] = 0
 
     return z_UB, v_UB, n_aux_UB, rho_UB, UB, UB_notlagrangian, UB_obj, UB_norm_obj, q_UB, tau_UB
