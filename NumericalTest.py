@@ -1,8 +1,8 @@
 import random
-
-import matplotlib.pyplot as plt
 import argparse
 import sys
+
+import matplotlib.pyplot as plt
 import numpy as np
 from time import time
 import gurobipy as gp
@@ -137,6 +137,7 @@ def main():
         for s in services:
             for cs in services_conf[s]:
                 nx.draw(services_conf_graph[list(cs.keys())[0]], with_labels = True)
+                plt.show()
 
     if printing_scenario_flag:
         i=1
