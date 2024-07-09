@@ -5,7 +5,7 @@
   "services_P": {"traffic_forecasting": 2, "traffic_classification": 1, "network_slicing": 3},
   "service_freq": {"traffic_forecasting": 1, "traffic_classification": 0.1, "network_slicing": 4},
   "functions": ["traffic_forecaster","traffic_classificator","network_slicer"],
-  "functions_compl": {"traffic_forecaster": [0, 1], "traffic_classificator": [0], "network_slicer": [0, 1]},
+  "functions_compl": {"traffic_forecaster": 2, "traffic_classificator": 1, "network_slicer": 2},
   "services_conf": {
     "traffic_forecasting": [{"cs_tf_0": ["traffic_forecaster"]}],
     "traffic_classification": [{"cs_tc_0": ["traffic_classificator"]}],
