@@ -8,7 +8,7 @@ from itertools import product
 from Orchestrator.utils import *
 
 
-def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, N_functions = 10, max_n_functions_per_s = 4, max_num_compl = 3, printing_flag=False, seed_val = None):
+def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, N_functions = 10, max_n_functions_per_s = 4, max_num_compl = 3, scenario="complete", printing_flag=False, seed_val = None):
     '''
     N_services: number of services
     priority_lvls: number of service priority levels
@@ -28,11 +28,9 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
         # -> function names as key
         # -> function complexities as value
         functions_dict['f_%s' % (_)] = [list(range(0, np.random.randint(0, max_num_compl) + 1))]
+    if scenario == "ScenarioZ":
+            functions_dict = {'f_0': [[0, 1, 2]], 'f_1': [[0, 1, 2]], 'f_2': [[0, 1, 2]]}
     functions, functions_compl = gp.multidict(functions_dict)
-
-    if printing_flag:
-        print("List of functions and the relative complexities")
-        display(functions_compl)
 
     # ---> services
     services_dict = {}
@@ -65,18 +63,6 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
     sp_v.sort(reverse=True)
     services_P = {k: sp_v[i] for i,k in enumerate(list(services_P.keys()))}
 
-    if printing_flag:
-        print("List of services and the relative target latecy")
-        display(services_L)
-        print("List of services and the relative target quality")
-        display(services_Q)
-        print("List of services and the relative priority")
-        display(services_P)
-        print("List of services and the relative configurations")
-        display(services_conf)
-        print("List of services and the relative periodicity (ms)")
-        display(service_freq)
-
     cs_to_s = {}
     for s in services:
         for cs in services_conf[s]:
@@ -96,29 +82,15 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
         for cs in services_conf[s]:
             services_conf_graph_former[list(cs.keys())[0]] = [f for f in list(cs.values())[0] if f != list(services_conf_graph[list(cs.keys())[0]].nodes())[0]]
 
-    if printing_flag:
 
-        for s in services:
-            for cs in services_conf[s]:
-                print(s,list(cs.keys())[0],services_conf_graph_output[list(cs.keys())[0]])
+    for s in services:
+        for cs in services_conf[s]:
+            print(s,list(cs.keys())[0],services_conf_graph_output[list(cs.keys())[0]])
 
-
-        print("Graphs:")
-        display(services_conf_graph)
-        print("Graphs' output nodes:")
-        display(services_conf_graph_output)
 
 
     # ---> NearRT RIC resource budget
-    resource, budget = gp.multidict({
-        'cpu': 1600,
-        'mem': 16,
-        'disk': 1024})
-
-    if printing_flag:
-        print("Near-RT RIC resource budget")
-        display(budget)
-
+    resource, budget = gp.multidict({'cpu': 1200,'mem': 12,'disk': 768})
 
     # --> xApp output data quality
     xApp_q = {}
@@ -127,6 +99,7 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
             for f in functions:
                 if f in list(cs.values())[0]:
                     # if f is involved by cs
+                    # if scenario == "ScenarioA":
                     q_c = random.sample([0.5, 0.6, 0.7, 0.8, 0.9], len(functions_compl[f]))
                     q_c.sort()
                     for c in functions_compl[f]:
@@ -135,11 +108,7 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
                     # if f is NOT involved by cs
                     for c in functions_compl[f]:
                         xApp_q[list(cs.keys())[0], f, c] = 0
-    # for c in functions_compl['f_0']:
-    #     xApp_q['cs_0_1', 'f_0', c ] = 0.1
-    # xApp_q['cs_0_1', 'f_0', 1 ] = 0.1
-    if printing_flag:
-        display(xApp_q)
+
 
     # check if at least one cs per service can meet the quality constraint
     for s in services:
@@ -159,6 +128,7 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
                 service_done = True
             else:
                 # decrease services_Q[s]
+                print("Decreasing target Q of",s)
                 services_Q[s] = services_Q[s] - 0.05
 
 
@@ -189,20 +159,6 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
             for c in functions_compl[f]:
                 xApp_mem_req[f, c, r] = mem_reqs[c]
 
-
-    # for c in functions_compl['f_0']:
-    #     xApp_q['cs_0_1', 'f_0', c ] = 0.1
-    # xApp_q['cs_0_1', 'f_0', 1 ] = 0.1
-    if printing_flag:
-        display(xApp_q)
-
-
-    # --> Service quality
-    #     --> WILL DEPEND ON DECISION VARIABLEs
-
-    # --> Service latency
-    #     --> WILL DEPEND ON DECISION VARIABLEs
-
     cs_list = []
     for s in services:
         for cs in services_conf[s]:
@@ -216,14 +172,19 @@ def test_scenario_init(N_services = 3, max_num_servconf = 3, priority_lvls = 3, 
     # for every function, lambda_f[((0,...,0),f)] = 0
     lambda_f = {}
 
-
     # 'theta' expresses the amount of input data processed by the xApp in a CPU cycle.")
     # Preparing a dict with '(f,c,j)' as key, and the corresponding 'theta' as value")
     theta = {}
     for f in functions:
+        # a list of random numbers
+        # theta_list = [np.random.uniform(0.5, 1.0) for _ in functions_compl[f]]
+        # theta_list = [np.random.uniform(0.5, 0.7) for _ in functions_compl[f]]
         theta_list = random.sample([0.5, 0.55, 0.60, 0.65, 0.7, 0.75], len(functions_compl[f]))
         theta_list.sort(reverse=True)
 
+        # if len(functions_compl[f]) == 1:
+        #     # print(theta_list)
+        #     break
         for c in functions_compl[f]:
             theta[f, c] = theta_list[c]
 

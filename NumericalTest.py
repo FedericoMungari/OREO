@@ -45,27 +45,37 @@ def main():
     else:
         timelimit = 10
 
+    if (args.heuristic is None) or (args.heuristic not in ["False", "True", "true", "false"]):
+        HEURISTIC_LP2 = True
+    else:
+        if args.heuristic == "False" or args.heuristic == "false":
+            HEURISTIC_LP2 = False
+        else:
+            HEURISTIC_LP2 = True
+
     timelimit_0 = timelimit
     timelimit_lp2 = timelimit_0
+    timelimit_lp3 = timelimit_0
 
     # ######################################################
     # printing phase has been removed by the original script
     # ######################################################
 
     if scenario == "ScenarioA":
-        N_services = 2; max_num_servconf = 2; N_functions = 4; max_n_functions_per_s = 2; max_num_compl = 2; priority_lvls = 3
+        N_services = 4; max_num_servconf = 2; N_functions = 4; max_n_functions_per_s = 3; max_num_compl = 3; priority_lvls = 3
     elif scenario == "ScenarioB":
-        N_services = 4; max_num_servconf = 3; N_functions = 6; max_n_functions_per_s = 2; max_num_compl = 3; priority_lvls = 3
+        N_services = 8; max_num_servconf = 3; N_functions = 8; max_n_functions_per_s = 4; max_num_compl = 3; priority_lvls = 3
     elif scenario == "ScenarioD":
-        N_services = 6; max_num_servconf = 4; N_functions = 8; max_n_functions_per_s = 3; max_num_compl = 3; priority_lvls = 3
+        N_services = 12; max_num_servconf = 4; N_functions = 12; max_n_functions_per_s = 5; max_num_compl = 3; priority_lvls = 3
     elif scenario == "ScenarioE":
-        N_services = 12; max_num_servconf = 5; N_functions = 10; max_n_functions_per_s = 4; max_num_compl = 3; priority_lvls = 3
+        N_services = 16; max_num_servconf = 5; N_functions = 16; max_n_functions_per_s = 6; max_num_compl = 3; priority_lvls = 3
     else:
         return -1
 
     np.random.seed(seed_val)  # Set the seed for numpy
     random.seed(seed_val)  # Set the seed for random
     gp.setParam('Seed', seed_val)  # Set the seed for gurobipy
+    sp.random.seed(seed_val)  # Set the seed for scipy
 
     max_latency = 1
     BigM = max_latency
@@ -85,6 +95,7 @@ def main():
                            N_functions = N_functions,
                            max_num_compl = max_num_compl,
                            printing_flag = printing_scenario_flag,
+                           scenario = scenario,
                            seed_val = seed_val)
 
     f_to_cs = {}
@@ -115,7 +126,6 @@ def main():
         services_L_list.append(services_L[s])
         services_Q_list.append(services_Q[s])
 
-    J_MAX = len(services)
     J_MAX = 0
     for f in functions:
         max_sharing_of_f = 0
@@ -133,24 +143,6 @@ def main():
 
     # In[ ]:
 
-    if printing_scenario_flag:
-        for s in services:
-            for cs in services_conf[s]:
-                nx.draw(services_conf_graph[list(cs.keys())[0]], with_labels = True)
-                plt.show()
-
-    if printing_scenario_flag:
-        i=1
-        for s in services:
-            for cs in services_conf[s]:
-                plt.subplot(3, 2, i)
-                nx.draw(services_conf_graph[list(cs.keys())[0]],with_labels=True)
-                i+=1
-                if i==6:
-                    break
-            if i==6:
-                break
-
     # Initialize time counters
     LP1_t_acc = 0  # lp1_t
     LP1_t_min = 1000
@@ -160,9 +152,17 @@ def main():
     LP2_t_min = 1000
     LP2_t_max = 0
 
+    LP3_t_acc = 0  # lp3_t
+    LP3_t_min = 1000
+    LP3_t_max = 0
+
     LP2_pruning_t_acc = 0  # lp2_pruning_end - lp2_pruning_start
     LP2_pruning_t_min = 1000
     LP2_pruning_t_max = 0
+
+    LP3_pruning_t_acc = 0  # lp2_pruning_end - lp2_pruning_start
+    LP3_pruning_t_min = 1000
+    LP3_pruning_t_max = 0
 
     LP_t_acc = 0
     LP_t_min = 1000
@@ -204,9 +204,9 @@ def main():
     delta_upperbound = min_ser_p / (max_cs_cardinality + BigM + 1) * 2
 
     # **Lagrangian multipliers**
-    beta = beta_init(services,services_conf,functions,ub=beta_upperbound)
-    gamma = gamma_init(services, services_conf,ub=gamma_upperbound)
-    delta = delta_init(services, services_conf,ub=delta_upperbound)
+    beta = beta_init(services, services_conf, functions, ub = beta_upperbound)
+    gamma = gamma_init(services, services_conf, ub = gamma_upperbound)
+    delta = delta_init(services, services_conf, ub = delta_upperbound)
 
     n_binary_oreo_lp1 = []
     n_integer_oreo_lp1 = []
@@ -218,19 +218,24 @@ def main():
     n_continuous_oreo_lp2 = []
     n_constraints_oreo_lp2 = []
 
-    # Model
+    n_binary_oreo_lp3 = []
+    n_integer_oreo_lp3 = []
+    n_continuous_oreo_lp3 = []
+    n_constraints_oreo_lp3 = []
+
     # LP1, LP2, z, v, n_aux, q = model_init(services, services_P, services_Q, services_conf, services_conf_graph_output, xApp_q, functions, functions_compl, beta, gamma=gamma, seed_val=seed_val,gp_printing=False)
-    lp1 = LP1(services, services_P, services_Q, services_conf, services_conf_graph_output, functions, functions_compl, beta, gamma, delta, cs_list, BigM=BigM, seed_val=seed_val, gp_printing=False, timelimit=timelimit, MIPGap_v=0.01)
+    lp1 = LP1(services, services_P, services_Q, services_conf, services_conf_graph_output, functions, functions_compl,
+              beta, gamma, delta, cs_list, BigM = BigM, seed_val = seed_val, gp_printing = False, timelimit = timelimit,
+              MIPGap_v = 0.01)
 
     # #########################################################################################################
-
     LB_list = []
     LB_notlagrangian_list = []
     LB_lagrangian_list = []
 
-    ZB_list = []
-    ZB_notlagrangian_list = []
-    ZB_lagrangian_list = []
+    UB_list = []
+    UB_notlagrangian_list = []
+    UB_lagrangian_list = []
 
     LB_obj_list = []
     LB_norm_obj_list = []
@@ -238,11 +243,11 @@ def main():
     LB_tau_list = []
     LB_nserv_list = []
 
-    ZB_obj_list = []
-    ZB_norm_obj_list = []
-    ZB_q_list = []
-    ZB_tau_list = []
-    ZB_nserv_list = []
+    UB_obj_list = []
+    UB_norm_obj_list = []
+    UB_q_list = []
+    UB_tau_list = []
+    UB_nserv_list = []
 
     BLB = -10000
     BLB_lagrangian = +1 * BLB
@@ -251,17 +256,21 @@ def main():
     BLB_norm_obj = +1 * BLB
 
     BUB = -1 * BLB
-    BZB_lagrangian = -1 * BLB
-    BZB_notlagrangian = -1 * BLB
-    BZB_obj = -1 * BLB
-    BZB_norm_obj = -1 * BLB
+    BUB_lagrangian = -1 * BLB
+    BUB_notlagrangian = -1 * BLB
+    BUB_obj = -1 * BLB
+    BUB_norm_obj = -1 * BLB
 
     xApps_in_lp2_list = []
-    xApps_in_ZB_list = []
+    xApps_in_UB_list = []
+
+    best_LP1_objfunct = -1 * BUB
+    best_LP2_objfunct = -1 * BUB
+    best_LP3_objfunct = -1 * BUB
 
     UB = 0
-    ZB_obj = 0
-    ZB_norm_obj = 0
+    UB_obj = 0
+    UB_norm_obj = 0
     LB = 0
     LB_obj = 0
     LB_norm_obj = 0
@@ -269,7 +278,7 @@ def main():
     step_size = 1 / normalization_factor
 
     n_iterations = 20
-    n_printing = int( n_iterations / 10 )
+    n_printing = int(n_iterations / 10)
 
     # the step size will be halved every time the BLB does not improve for N_consecutive_times
     N_consecutive_times = 5
@@ -298,22 +307,27 @@ def main():
     counter_without_timelimit_increment_lp2 = 0
     counter_with_timelimit_increment_lp2 = 0
 
-    counter_with_timelimit_increment_max = 3
+    counter_without_timelimit_increment_lp3 = 0
+    counter_with_timelimit_increment_lp3 = 0
 
-    # z_LB = {(s,list(cs.keys())[0]):0 for s in services for cs in services_conf[s]} # we will init it later
-    v_LB_0 = {(list(cs.keys())[0],f,c,j):0 for s in services for cs in services_conf[s] for f in functions for c in functions_compl[f] for j in range(1,J_MAX+1)}
-    n_aux_LB_0 = {(f,c,j):0 for f in functions for c in functions_compl[f] for j in range(1,J_MAX+1)}
-    rho_LB_0 = {(f,c,j,r):0 for f in functions for c in functions_compl[f] for j in range(1,J_MAX+1) for r in budget}
-    tau_LB_0 = {list(cs.keys())[0]:max_latency for s in services for cs in services_conf[s]}
-    q_LB_0 = {list(cs.keys())[0]:0 for s in services for cs in services_conf[s]}
+    counter_with_timelimit_increment_max = 2
+
+    v_LB_0 = {(list(cs.keys())[0], f, c, j): 0 for s in services for cs in services_conf[s] for f in functions for c in
+              functions_compl[f] for j in range(1, J_MAX + 1)}
+    n_aux_LB_0 = {(f, c, j): 0 for f in functions for c in functions_compl[f] for j in range(1, J_MAX + 1)}
+    rho_LB_0 = {(f, c, j, r): 0 for f in functions for c in functions_compl[f] for j in range(1, J_MAX + 1) for r in
+                budget}
+    tau_LB_0 = {list(cs.keys())[0]: max_latency for s in services for cs in services_conf[s]}
+    q_LB_0 = {list(cs.keys())[0]: 0 for s in services for cs in services_conf[s]}
 
     lp1_pruning_start = time()
 
     services_conf_pruned = {}
     for s in services:
         for cs in services_conf[s]:
-            q_max_available = max_quality_comp(s, cs, functions_compl, services_Q[s], quality_mapping_x, quality_mapping_q,
-                                   f_multiplier, f_multiplier_c)
+            q_max_available = max_quality_comp(s, cs, functions_compl, services_Q[s], quality_mapping_x,
+                                               quality_mapping_q,
+                                               f_multiplier, f_multiplier_c)
             if q_max_available < services_Q[s]:
                 # The service configuration cs for s is useless
                 pass
@@ -333,23 +347,23 @@ def main():
 
     for iteration in range(n_iterations):
 
-        lp1_obj = 0
-        lp2_obj = 0
+        lp1_obj = 0; lp2_obj = 0; lp3_obj = 0
 
-        v_LB = v_LB_0.copy()
-        n_aux_LB = n_aux_LB_0.copy()
-        rho_LB = rho_LB_0.copy()
-        tau_LB = tau_LB_0.copy()
-        q_LB = q_LB_0.copy()
+        v_LB = v_LB_0.copy(); n_aux_LB = n_aux_LB_0.copy(); rho_LB = rho_LB_0.copy(); tau_LB = tau_LB_0.copy(); q_LB = q_LB_0.copy()
 
         Heuristic_t_iter_start = time()
 
         if iteration == 5:
             N_consecutive_times_gap = 3
 
-        if iteration>0 and timelimit_0!=None and timelimit_0>0:
+        if iteration > 0 and timelimit_0 != None and timelimit_0 > 0:
             timelimit = timelimit + timelimit_0
-            lp2.m.setParam('TimeLimit', timelimit)
+            if not HEURISTIC_LP2:
+                lp2.m.setParam('TimeLimit', timelimit)
+            try:
+                lp3.m.setParam('TimeLimit', timelimit)
+            except:
+                pass
 
         # print(print_numb, "- Start LP1 optimization, iteration:",iteration); print_numb += 1; sys.stdout.flush()
         lp1.set_obj(services, services_P, services_Q, services_conf_pruned, functions, functions_compl)
@@ -361,17 +375,15 @@ def main():
 
         lp1_obj = lp1.m.ObjVal
 
-        result = [k for k,v in lp1.z.items() if v.X >= 0.5] # It contains the (s,cs) pairs selected by LP1 solution.
+        result = [k for k, v in lp1.z.items() if v.X >= 0.5]  # It contains the (s,cs) pairs selected by LP1 solution.
 
         if result == []:
             '''Something wrong: the LP1 solution should always select at leas one service.'''
             print("\nEmpty result from LP1\n")
             return -1
 
-        z_LB = {k:v.X for k,v in lp1.z.items()}
+        z_LB = {k: v.X for k, v in lp1.z.items()}
         # print("unfeasible services:", len({k:v for k,v in z_LB.items() if v>0.5}))
-
-        lp2_pruning_start = time()
 
         services_prime = [r[0] for r in result]
         services_notprime = [s for s in services if s not in services_prime]
@@ -382,7 +394,7 @@ def main():
         # among the service configurations "service_conf", we keep only the ones that have been selected
         # in LP1 solution
         services_conf_prime = {}
-        for s,cs in result:
+        for s, cs in result:
             services_conf_prime[s] = []
             for ccs in services_conf_pruned[s]:
                 if list(ccs.keys())[0] == cs:
@@ -414,80 +426,219 @@ def main():
         semantic_prime = {}
         semantic_notprime = {}
         for f in functions:
-            semantic_prime[f] = {k: shared_elements(v,cs_list_prime) for k, v in semantic[f].items()}
-            semantic_notprime[f] = {k: shared_elements(v,cs_list_notprime) for k, v in semantic[f].items()}
+            semantic_prime[f] = {k: shared_elements(v, cs_list_prime) for k, v in semantic[f].items()}
+            semantic_notprime[f] = {k: shared_elements(v, cs_list_notprime) for k, v in semantic[f].items()}
 
         f_to_cs_prime = {}
         for f in functions_prime:
             f_to_cs_prime[f] = [x for x in f_to_cs[f] if x in cs_list_prime]
 
-        # print(print_numb, "- Start LP2 definement, iteration:", iteration); print_numb += 1; sys.stdout.flush()
-        lp2 = LP2(services_prime, services_P, services_Q, services_conf_prime,
-                  services_conf_graph_output_prime, services_conf_graph_former_prime, J_MAX_prime,
-                  quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
-                  xApp_mem_req, functions, functions_compl,
-                  beta, gamma, delta,
-                  budget, theta, semantic_prime, lambda_semantic, cs_list_prime, services_L,
-                  max_latency=max_latency, seed_val=seed_val,gp_printing=False, timelimit=timelimit_lp2, MIPGap_v=0.01) # MIPGap_v=0.5/(10*(iteration+1)))
-        # print(print_numb, "- End LP2 definement, iteration:", iteration); print_numb += 1; sys.stdout.flush()
+        if not HEURISTIC_LP2:
+            # print(print_numb, "- Start LP2 definement, iteration:", iteration); print_numb += 1; sys.stdout.flush()
+            lp2 = LP2(services_prime, services_P, services_Q, services_conf_prime,
+                      services_conf_graph_output_prime, services_conf_graph_former_prime, J_MAX_prime,
+                      quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
+                      xApp_mem_req, functions, functions_compl,
+                      beta, gamma, delta,
+                      budget, theta, semantic_prime, lambda_semantic, cs_list_prime, services_L,
+                      max_latency = max_latency, seed_val = seed_val, gp_printing = False, timelimit = timelimit_lp2,
+                      MIPGap_v = 0.01)
+            # print(print_numb, "- End LP2 definement, iteration:", iteration); print_numb += 1; sys.stdout.flush()
 
-        lp2_pruning_end = time()
-
-        lp2_t_start = time()
-        while True:
-            try:
-                # print(print_numb, "- Start LP2 optimization, iteration:", iteration); print_numb += 1; sys.stdout.flush()
-                lp2.set_obj(services_prime, services_conf_prime, functions_prime, functions_compl, J_MAX_prime, budget,services_L)
-                lp2.optimize()
-                # print("LP2 OPTIMIZATION TRIAL DONE - (iter %d)" % iteration)
-                lp2.n_aux[list(lp2.n_aux.keys())[0]].X
-                counter_without_timelimit_increment_lp2 += 1
-                counter_with_timelimit_increment_lp2 = 0
-                break
-            except:
-                print("Increasing timelimit lp2 from",timelimit_lp2,"to",timelimit_lp2 + 10*timelimit_0)
-                if counter_with_timelimit_increment_lp2==0:
-                    timelimit_lp2 = 10*timelimit_0
-                else:
-                    timelimit_lp2 = timelimit_lp2 + 10 * timelimit_0
-                counter_without_timelimit_increment = 0
-                counter_with_timelimit_increment_lp2+=1
-                if counter_with_timelimit_increment_lp2 == counter_with_timelimit_increment_max:
+            lp2_pruning_end = time()
+            lp2_t_start = time()
+            while True:
+                try:
+                    lp2.set_obj(services_prime, services_conf_prime, functions_prime, functions_compl, J_MAX_prime,
+                                budget, services_L)
+                    lp2.optimize()
+                    lp2.n_aux[list(lp2.n_aux.keys())[0]].X
+                    counter_without_timelimit_increment_lp2 += 1
+                    counter_with_timelimit_increment_lp2 = 0
                     break
-                lp2.m.setParam('TimeLimit', timelimit_lp2)
-        # print("LP2 OPTIMIZED - (iter %d)" % iteration)
-        lp2_t_end = time()
-        # print(print_numb, "- End LP2 optimization, iteration:", iteration); print_numb += 1; sys.stdout.flush()
+                except:
+                    # print("Increasing timelimit lp2 from", timelimit_lp2, "to", timelimit_lp2 + timelimit_0)
+                    timelimit_lp2 = timelimit_lp2 + timelimit_0
+                    counter_with_timelimit_increment_lp2 += 1
+                    if counter_with_timelimit_increment_lp2 == counter_with_timelimit_increment_max:
+                        break
+                    lp2.m.setParam('TimeLimit', timelimit_lp2)
 
-        lp2_obj = lp2.m.ObjVal
+            # print("LP2 OPTIMIZED - (iter %d)" % iteration)
+            lp2_t_end = time()
+            # print(print_numb, "- End LP2 optimization, iteration:", iteration); print_numb += 1; sys.stdout.flush()
 
-        for k in lp2.v.keys():
-            v_LB[k] = lp2.v[k].X
+            lp2_obj = lp2.m.ObjVal
 
-        for k in lp2.n_aux.keys():
-            n_aux_LB[k] = lp2.n_aux[k].X
+            for k in lp2.v.keys():
+                v_LB[k] = lp2.v[k].X
 
-        for k in lp2.rho.keys():
-            rho_LB[k] = lp2.rho[k].X
+            for k in lp2.n_aux.keys():
+                n_aux_LB[k] = lp2.n_aux[k].X
 
+            for k in lp2.rho.keys():
+                rho_LB[k] = lp2.rho[k].X
 
-        if counter_with_timelimit_increment_lp2 == counter_with_timelimit_increment_max:
-            print("LP2: No solution found.\nLaunched command:")
-            print("-s "+str(scenario)+
-                  " -ss "+str(seed_val)+
-                  " -t "+str(timelimit_0))
-            sys.stdout.flush()
-            return -1
+            if counter_with_timelimit_increment_lp2 == counter_with_timelimit_increment_max:
+                print("LP2: No solution found.\nLaunched command:")
+                print("-s " + str(scenario) +
+                      " -ss " + str(seed_val) +
+                      " -t " + str(timelimit_0))
+                sys.stdout.flush()
+                return -1
+
+        else:
+
+            lp2_pruning_end = time()
+
+            '''Heuristic for LP2 based on __Solving the deterministic and stochastic uncapacitated facility location
+                                            problem: from a heuristic to a simheuristic__'''
+
+            lp2_t_start = time()
+            v_h, rho_h, actual_q_h, n_aux_h, obj_h, all_f_per_cs_h = heuristic_lr2(services_prime, services_notprime,
+                                                                                   cs_list_prime, cs_list_notprime,
+                                                                                   services_conf_prime, functions_prime,
+                                                                                   J_MAX_prime, services_conf_notprime,
+                                                                                   services_conf_graph_output_prime,
+                                                                                   services_conf_graph_former_prime,
+                                                                                   semantic_prime, semantic_notprime,
+                                                                                   f_to_cs_prime, functions_compl,
+                                                                                   budget, xApp_mem_req, beta, gamma,
+                                                                                   theta, lambda_semantic, semantic_cs,
+                                                                                   f_multiplier, f_multiplier_c,
+                                                                                   quality_mapping_x, quality_mapping_q,
+                                                                                   cs_to_s)
+            lp2_t_end = time()
+
+            lp2_obj = obj_h
+            v_LB = copy.deepcopy(v_h)
+            n_aux_LB = copy.deepcopy(n_aux_h)
+            rho_LB = copy.deepcopy(rho_h)
+
+        v_prime = {}
+        n_aux_prime = {}
+        for f, c, j in n_aux_LB:
+            if n_aux_LB[f, c, j] >= 0.5:
+                n_aux_prime[f, c, j] = 1
+                for cs in cs_list_prime:
+                    v_prime[cs, f, c, j] = v_LB[cs, f, c, j]
+
+        if len(n_aux_prime) != 0:
+            if not HEURISTIC_LP2:
+                cs_list_all_f = [k for k, v in lp2.all_f_per_cs.items() if v.X >= 0.5]
+                services_all_f = [cs_to_s[cs] for cs in cs_list_all_f]
+            else:
+                cs_list_all_f = [k for k, v in all_f_per_cs_h.items() if v >= 0.5]
+                services_all_f = [cs_to_s[cs] for cs in cs_list_all_f]
+
+            # --> Auxiliary variables: lambda_aux[f,sem]
+            lambda_aux_prime = {}
+            lambda_xApp = {}
+            for f in semantic_prime:
+                for sem in semantic_prime[f]:
+                    for c in functions_compl[f]:
+                        for j in range(1, J_MAX + 1):
+                            lambda_xApp[f, c, j] = 0
+                            counter = 0
+                            for cs in semantic_prime[f][sem]:
+                                if (cs, f, c, j) in v_prime.keys():
+                                    if v_prime[cs, f, c, j] >= 0.5:
+                                        counter += 1
+                                        break
+                            if counter > 0:
+                                lambda_aux_prime[f, sem, c, j] = lambda_semantic[f][sem]
+                                lambda_aux_prime[f, sem, c, j] = lambda_semantic[f][sem]
+                            else:
+                                lambda_aux_prime[f, sem, c, j] = 0
+
+            for f, sem, c, j in lambda_aux_prime:
+                lambda_xApp[f, c, j] += lambda_aux_prime[f, sem, c, j]
+            lp3 = LP3(services_prime, services_P, services_Q, services_conf_prime,
+                      services_conf_graph_output_prime, services_conf_graph_former_prime, J_MAX_prime,
+                      quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
+                      xApp_mem_req, functions, functions_compl,
+                      beta, gamma, delta,
+                      budget, theta, semantic_prime, lambda_semantic, cs_list_prime, services_L,
+                      v_prime, lambda_xApp, n_aux_prime,
+                      cs_list_all_f, services_all_f,
+                      max_latency = max_latency, seed_val = seed_val, gp_printing = False, timelimit = timelimit_lp3,
+                      MIPGap_v = 0.01)
+
+            lp3_pruning_end = time()
+
+            lp3_t_start = time()
+            while True:
+                try:
+                    # print(print_numb, "- Start LP3 optimization, iteration:", iteration); print_numb += 1; sys.stdout.flush()
+                    lp3.set_obj(services_prime, services_conf_prime, functions, functions_compl, J_MAX_prime, budget,
+                                services_L)
+                    lp3.m.setParam('TimeLimit', timelimit_lp3)
+                    lp3.m.update()
+                    # print("LP3 OPTIMIZATION TRIAL START - (iter %d)" % iteration)
+                    lp3.optimize()
+                    # print("LP3 OPTIMIZATION TRIAL DONE - (iter %d)" % iteration)
+                    lp3.rho[list(lp3.rho.keys())[0]].X
+                    counter_without_timelimit_increment_lp3 += 1
+                    counter_with_timelimit_increment_lp3 = 0
+                    break
+                except:
+                    print("Increasing timelimit lp3 from", timelimit_lp3, "to", timelimit_lp3 + timelimit_0);
+                    sys.stdout.flush()
+                    timelimit_lp3 = timelimit_lp3 + timelimit_0
+                    counter_without_timelimit_increment_lp3 = 0
+                    counter_with_timelimit_increment_lp3 += 1
+                    if counter_with_timelimit_increment_lp3 == counter_with_timelimit_increment_max:
+                        lp3.m.Params.LogToConsole = True
+                        lp3.m.Params.OutputFlag = True
+                        lp3.m.computeIIS()
+                        # lp3.m.write("infeasible_model.txt")
+                        iis_cons = lp3.m.IISConstr
+                        constraints = lp3.m.getConstrs()
+                        for i, v in enumerate(iis_cons):
+                            if v >= 0.5:
+                                print(i, constraints[i])
+                        break
+                    lp3.m.setParam('TimeLimit', timelimit_lp3)
+
+            # print("LP3 OPTIMIZED - (iter %d)" % iteration)
+            lp3_t_end = time()
+            # print(print_numb, "- End LP3 optimization, iteration:", iteration); print_numb += 1; sys.stdout.flush()
+
+            lp3_obj = lp3.m.ObjVal
+
+            for k in lp3.rho.keys():
+                rho_LB[k] = lp3.rho[k].X
+
+            if counter_with_timelimit_increment_lp3 == counter_with_timelimit_increment_max:
+                print("LP3: No solution found.\nLaunched command:")
+                print("-s " + str(scenario) +
+                      " -ss " + str(seed_val) +
+                      " -t " + str(timelimit_0))
+                return -1
+
+        else:
+
+            lp3_pruning_start = time()
+            lp3_pruning_end = time()
+
+            lp3_t_start = time()
+            lp3_t_end = time()
 
         lp1_t = lp1_t_end - lp1_t_start
         lp2_t = lp2_t_end - lp2_t_start
-        lp_t = lp1_t + lp2_t
+        lp3_t = lp3_t_end - lp3_t_start
+        lp_t = lp1_t + lp2_t + lp3_t
 
         lp2_pruning_t = lp2_pruning_end - lp2_pruning_start
+        lp3_pruning_t = lp3_pruning_end - lp3_pruning_start
 
-        if counter_without_timelimit_increment_lp2 == 3 and timelimit != None and timelimit > 0:
-            timelimit = max(timelimit - timelimit_0, timelimit_0)
-            lp2.m.setParam('TimeLimit', timelimit)
+        if not HEURISTIC_LP2:
+            if counter_without_timelimit_increment_lp2 == 3 and timelimit != None and timelimit > 0:
+                timelimit = max(timelimit - timelimit_0, timelimit_0)
+                lp2.m.setParam('TimeLimit', timelimit)
+            if counter_without_timelimit_increment_lp3 == 3 and timelimit != None and timelimit > 0:
+                timelimit = max(timelimit - timelimit_0, timelimit_0)
+                lp3.m.setParam('TimeLimit', timelimit)
 
         dict_tmp = {k: v for k, v in n_aux_LB.items() if v >= 0.5}
         xApps_in_lp2 = len(dict_tmp)
@@ -495,7 +646,7 @@ def main():
 
         BoundComp_t_start1 = time()
 
-        LB_lagrangian = lp1_obj+lp2_obj
+        LB_lagrangian = lp1_obj + lp2_obj + lp3_obj
 
         LB_notlagrangian = compute_LB(services, services_P, services_conf, functions, functions_compl, J_MAX,
                                       z_LB, rho_LB, budget)
@@ -511,7 +662,7 @@ def main():
                                                         rho_LB,
                                                         budget,
                                                         J_MAX_prime,
-                                                        normalization_factor=normalization_factor)
+                                                        normalization_factor = normalization_factor)
 
         n_serv_counter = 0
         for key in z_LB:
@@ -523,10 +674,12 @@ def main():
         LB_lagrangian_list.append(LB_lagrangian)
         LB_obj_list.append(LB_obj)
         LB_norm_obj_list.append(LB_norm_obj)
+        # LB_q_list.append((dict(zip(list(lp2.q.keys()), [val.X for val in list(lp2.q.values())]))))
         LB_q_list.append(q_LB)
+        # LB_tau_list.append((dict(zip(list(lp3.tau.keys()), [val.X for val in list(lp3.tau.values())]))))
         LB_tau_list.append(tau_LB)
 
-        if (LB_notlagrangian > BLB_notlagrangian) and (iteration!=0):
+        if (LB_notlagrangian > BLB_notlagrangian) and (iteration != 0):
             best_iteration_LB = iteration
             BLB = LB
             BLB_notlagrangian = LB_notlagrangian
@@ -534,10 +687,18 @@ def main():
             BLB_obj = LB_obj
             BLB_norm_obj = LB_norm_obj
             best_LP1_objfunct = lp1.m.ObjVal
-            best_LP2_objfunct = lp2.m.ObjVal
+            if not HEURISTIC_LP2:
+                best_LP2_objfunct = lp2.m.ObjVal
+            else:
+                best_LP2_objfunct = obj_h
+            try:
+                best_LP3_objfunct = lp3.m.ObjVal
+            except:
+                best_LP3_objfunct = 0
             best_z_LB = z_LB.copy()
             best_v_LB = v_LB.copy()
             best_n_aux_LB = n_aux_LB.copy()
+            # best_rho_LB = (dict(zip(list({**lp2.rho, **lp3.rho}.keys()), [val.X for val in list({**lp2.rho, **lp3.rho}.values())])))
             best_rho_LB = rho_LB.copy()
             best_beta_LB = beta.copy()
             best_gamma_LB = gamma.copy()
@@ -549,49 +710,51 @@ def main():
         # ##################################################################################################################
         # UB computation
         EnsuringFeasibility_t_start = time()
-        z_UB, v_UB, n_aux_UB, rho_UB, ZB_lagrangian, ZB_notlagrangian, ZB_obj, ZB_norm_obj, q_UB, tau_UB = \
-            EnsuringFeasibility(services_prime, services_notprime,
-                                  services_P, services_Q, services_L,
-                                  services_conf_prime, services_conf_notprime,
-                                  cs_list_prime, cs_to_s,
-                                  services_conf_graph_output_prime, services_conf_graph_former_prime,
-                                  functions, functions_compl,
-                                  quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
-                                  J_MAX_prime,
-                                  budget,
-                                  z_LB, v_LB, rho_LB, q_LB, tau_LB, n_aux_LB,
-                                  semantic_prime, lambda_semantic, semantic_cs, theta,
-                                  beta, gamma, delta, xApp_mem_req,
-                                  max_latency=max_latency, BigM=BigM, normalization_factor=normalization_factor)
+        # z_UB, v_UB, n_aux_UB, rho_UB, UB_lagrangian, UB_notlagrangian, UB_obj, UB_norm_obj, q_UB, tau_UB = xDeSh_heuristic_new(services_prime, services_notprime, services_P, services_Q, services_L, services_conf_prime, services_conf_notprime, cs_list_prime, cs_to_s, services_conf_graph_output_prime, services_conf_graph_former_prime, functions, functions_compl, quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c, J_MAX_prime, budget, z_LB, v_LB, rho_LB, semantic_prime, lambda_semantic, semantic_cs, theta, beta, gamma, delta, xApp_mem_req, max_latency=max_latency, BigM=BigM, normalization_factor=normalization_factor, QUALITY_TUNING=QUALITY_TUNING,SHARING_SCORE_COMP=SHARING_SCORE_COMP)
+        z_UB, v_UB, n_aux_UB, rho_UB, UB_lagrangian, UB_notlagrangian, UB_obj, UB_norm_obj, q_UB, tau_UB = \
+            xDeSh_heuristic_extension(services_prime, services_notprime,
+                                      services_P, services_Q, services_L,
+                                      services_conf_prime, services_conf_notprime,
+                                      cs_list_prime, cs_to_s,
+                                      services_conf_graph_output_prime, services_conf_graph_former_prime,
+                                      functions, functions_compl,
+                                      quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
+                                      J_MAX_prime,
+                                      budget,
+                                      z_LB, v_LB, rho_LB, q_LB, tau_LB, n_aux_LB,
+                                      semantic_prime, lambda_semantic, semantic_cs, theta,
+                                      beta, gamma, delta, xApp_mem_req,
+                                      max_latency = max_latency, BigM = BigM,
+                                      normalization_factor = normalization_factor, QUALITY_TUNING = QUALITY_TUNING,
+                                      SHARING_SCORE_COMP = SHARING_SCORE_COMP)
         EnsuringFeasibility_t_end = time()
 
         dict_tmp = {k: v for k, v in n_aux_UB.items() if v >= 0.5}
         xApps_in_UB = len(dict_tmp)
-        xApps_in_ZB_list.append(xApps_in_UB)
+        xApps_in_UB_list.append(xApps_in_UB)
 
         BoundComp_t_start2 = time()
-        UB = ZB_lagrangian
+        UB = UB_lagrangian
 
         n_serv_counter = 0
         for key in z_UB:
             n_serv_counter += z_UB[key]
-        ZB_nserv_list.append(n_serv_counter)
-        ZB_list.append(UB)
-        ZB_notlagrangian_list.append(ZB_notlagrangian)
-        ZB_lagrangian_list.append(ZB_lagrangian)
-        ZB_obj_list.append(ZB_obj)
-        ZB_norm_obj_list.append(ZB_norm_obj)
-        ZB_q_list.append(q_UB)
-        ZB_tau_list.append(tau_UB)
+        UB_nserv_list.append(n_serv_counter)
+        UB_list.append(UB)
+        UB_notlagrangian_list.append(UB_notlagrangian)
+        UB_lagrangian_list.append(UB_lagrangian)
+        UB_obj_list.append(UB_obj)
+        UB_norm_obj_list.append(UB_norm_obj)
+        UB_q_list.append(q_UB)
+        UB_tau_list.append(tau_UB)
 
-
-        if (ZB_notlagrangian < BZB_notlagrangian) and (iteration!=0):
+        if (UB_notlagrangian < BUB_notlagrangian) and (iteration != 0):
             best_iteration_UB = iteration
             BUB = UB
-            BZB_notlagrangian = ZB_notlagrangian
-            BZB_lagrangian = ZB_lagrangian
-            BZB_obj = ZB_obj
-            BZB_norm_obj = ZB_norm_obj
+            BUB_notlagrangian = UB_notlagrangian
+            BUB_lagrangian = UB_lagrangian
+            BUB_obj = UB_obj
+            BUB_norm_obj = UB_norm_obj
             best_z_UB = z_UB.copy()
             best_v_UB = v_UB.copy()
             best_n_aux_UB = n_aux_UB.copy()
@@ -604,8 +767,9 @@ def main():
 
         BoundComp_t_end2 = time()
 
-        if (ZB_notlagrangian // 0.0001 > BZB_notlagrangian // 0.0001):
-                counter_stepsize += 1
+        # if (UB_notlagrangian // 0.0001  < BUB_notlagrangian // 0.0001):
+        if (UB_notlagrangian // 0.0001 > BUB_notlagrangian // 0.0001):
+            counter_stepsize += 1
         else:
             counter_stepsize = 0
 
@@ -613,23 +777,26 @@ def main():
             step_size = step_size / 2
             counter_stepsize = 0
 
-
         # ##################################################################################################################
         # Lagrangian multipliers update
 
         Subgradient_t_start = time()
 
-        step_size_it_num = step_size * (ZB_notlagrangian - LB_notlagrangian)
+        step_size_it_num = step_size * (UB_notlagrangian - LB_notlagrangian)
 
+        step_size_it_den_1 = (
+            gp.quicksum(gp.quicksum(gp.quicksum(((z_LB[s, list(cs.keys())[0]] - gp.quicksum(gp.quicksum(
+                v_LB[list(cs.keys())[0], f, c, j] for j in range(1, J_MAX_prime + 1)) for c in functions_compl[
+                                                                                                f])).getValue()) ** 2
+                                                for f in list(cs.values())[0]) for cs in services_conf_prime[s]) for s
+                        in services_prime)).getValue()
 
-        step_size_it_den_1 = (gp.quicksum(gp.quicksum(gp.quicksum(((z_LB[s,list(cs.keys())[0]] - gp.quicksum(gp.quicksum(
-                v_LB[list(cs.keys())[0],f,c,j] for j in range(1,J_MAX_prime+1)) for c in functions_compl[f])).getValue())**2
-            for f in list(cs.values())[0]) for cs in services_conf_prime[s]) for s in services_prime)).getValue()
-
-        step_size_it_den_2 = (gp.quicksum(gp.quicksum((z_LB[s, list(cs.keys())[0]] * services_Q[s] - q_LB[list(cs.keys())[0]])**2 for cs in services_conf_prime[s]) for s in services_prime)).getValue()
+        step_size_it_den_2 = (gp.quicksum(gp.quicksum(
+            (z_LB[s, list(cs.keys())[0]] * services_Q[s] - q_LB[list(cs.keys())[0]]) ** 2 for cs in
+            services_conf_prime[s]) for s in services_prime)).getValue()
 
         step_size_it_den_3 = (gp.quicksum(gp.quicksum(
-                (tau_LB[list(cs.keys())[0]] - services_L[s] - BigM * (1 - z_LB[s,list(cs.keys())[0]]))**2
+            (tau_LB[list(cs.keys())[0]] - services_L[s] - BigM * (1 - z_LB[s, list(cs.keys())[0]])) ** 2
             for cs in services_conf_prime[s]) for s in services_prime)).getValue()
 
         step_size_it_den = step_size_it_den_1 + step_size_it_den_2 + step_size_it_den_3
@@ -641,40 +808,49 @@ def main():
             for cs in services_conf_prime[s]:
 
                 for f in list(cs.values())[0]:
-                    subgradients1 = z_LB[s,list(cs.keys())[0]] - 1 * gp.quicksum(gp.quicksum(
-                                   v_LB[list(cs.keys())[0],f,c,j] for j in range(1,J_MAX_prime+1)) for c in functions_compl[f])
+                    subgradients1 = z_LB[s, list(cs.keys())[0]] - 1 * gp.quicksum(gp.quicksum(
+                        v_LB[list(cs.keys())[0], f, c, j] for j in range(1, J_MAX_prime + 1)) for c in
+                                                                                  functions_compl[f])
                     # step_size_it = step_size_it_num/(step_size_it_den_1)
-                    beta[s,list(cs.keys())[0],f] = beta[s,list(cs.keys())[0],f] + step_size_it * subgradients1
-                    beta[s,list(cs.keys())[0],f] = beta[s,list(cs.keys())[0],f].getValue()
+                    beta[s, list(cs.keys())[0], f] = beta[s, list(cs.keys())[0], f] + step_size_it * subgradients1
+                    beta[s, list(cs.keys())[0], f] = beta[s, list(cs.keys())[0], f].getValue()
                     # if beta[s,list(cs.keys())[0],f]  < 0:
                     #     print("negative beta ", s, list(cs.keys())[0], f)
                     # if beta[s, list(cs.keys())[0], f] > beta_upperbound:
                     #     print("large beta", s, list(cs.keys())[0], f)
-                    beta[s,list(cs.keys())[0],f] = max(beta[s,list(cs.keys())[0],f],0)
-                    beta[s,list(cs.keys())[0],f] = min(beta[s,list(cs.keys())[0],f],beta_upperbound)
-                    if subgradients1.getValue()/step_size_it_den > max_sub1:
-                        max_sub1 = step_size_it * subgradients1.getValue()/step_size_it_den
-                    elif subgradients1.getValue()/step_size_it_den < min_sub1:
-                        min_sub1 = step_size_it * subgradients1.getValue()/step_size_it_den
+                    beta[s, list(cs.keys())[0], f] = max(beta[s, list(cs.keys())[0], f], 0)
+                    beta[s, list(cs.keys())[0], f] = min(beta[s, list(cs.keys())[0], f], beta_upperbound)
+                    if subgradients1.getValue() / step_size_it_den > max_sub1:
+                        max_sub1 = step_size_it * subgradients1.getValue() / step_size_it_den
+                    elif subgradients1.getValue() / step_size_it_den < min_sub1:
+                        min_sub1 = step_size_it * subgradients1.getValue() / step_size_it_den
 
-
-                subgradients2 = z_LB[s, list(cs.keys())[0]] * services_Q[s] - lp2.q[list(cs.keys())[0]]
+                if not HEURISTIC_LP2:
+                    subgradients2 = z_LB[s, list(cs.keys())[0]] * services_Q[s] - lp2.q[list(cs.keys())[0]]
+                else:
+                    subgradients2 = z_LB[s, list(cs.keys())[0]] * services_Q[s] - actual_q_h[list(cs.keys())[0]]
                 # step_size_it = step_size_it_num / (step_size_it_den_2)
                 gamma[s, list(cs.keys())[0]] = gamma[s, list(cs.keys())[0]] + step_size_it * subgradients2
-                gamma[s, list(cs.keys())[0]] = gamma[s, list(cs.keys())[0]].getValue()
+                if not HEURISTIC_LP2:
+                    gamma[s, list(cs.keys())[0]] = gamma[s, list(cs.keys())[0]].getValue()
                 # if gamma[s, list(cs.keys())[0]] < 0:
                 #     print("negative gamma", s, list(cs.keys())[0])
                 # if gamma[s, list(cs.keys())[0]] > gamma_upperbound:
                 #     print("large gamma", s, list(cs.keys())[0])
                 gamma[s, list(cs.keys())[0]] = max(gamma[s, list(cs.keys())[0]], 0)
                 gamma[s, list(cs.keys())[0]] = min(gamma[s, list(cs.keys())[0]], gamma_upperbound)
-                if subgradients2.getValue()/step_size_it_den > max_sub2:
-                    max_sub2 = step_size_it * subgradients2.getValue()/step_size_it_den
-                elif subgradients2.getValue()/step_size_it_den < min_sub2:
-                    min_sub2 = step_size_it * subgradients2.getValue()/step_size_it_den
+                if not HEURISTIC_LP2:
+                    if subgradients2.getValue() / step_size_it_den > max_sub2:
+                        max_sub2 = step_size_it * subgradients2.getValue() / step_size_it_den
+                    elif subgradients2.getValue() / step_size_it_den < min_sub2:
+                        min_sub2 = step_size_it * subgradients2.getValue() / step_size_it_den
+                else:
+                    if subgradients2 / step_size_it_den > max_sub2:
+                        max_sub2 = step_size_it * subgradients2 / step_size_it_den
+                    elif subgradients2 / step_size_it_den < min_sub2:
+                        min_sub2 = step_size_it * subgradients2 / step_size_it_den
 
-
-                subgradients3 = tau_LB[list(cs.keys())[0]] - services_L[s] - BigM * (1 - z_LB[s,list(cs.keys())[0]])
+                subgradients3 = tau_LB[list(cs.keys())[0]] - services_L[s] - BigM * (1 - z_LB[s, list(cs.keys())[0]])
                 try:
                     subgradients3 = subgradients3.getValue()
                 except:
@@ -691,43 +867,57 @@ def main():
                 #     print("large delta", s, list(cs.keys())[0])
                 delta[s, list(cs.keys())[0]] = max(delta[s, list(cs.keys())[0]], 0)
                 delta[s, list(cs.keys())[0]] = min(delta[s, list(cs.keys())[0]], delta_upperbound)
-                if subgradients3/step_size_it_den > max_sub3:
-                    max_sub3 = step_size_it * subgradients3/step_size_it_den
-                elif subgradients3/step_size_it_den < min_sub3:
-                    min_sub3 = step_size_it * subgradients3/step_size_it_den
+                if subgradients3 / step_size_it_den > max_sub3:
+                    max_sub3 = step_size_it * subgradients3 / step_size_it_den
+                elif subgradients3 / step_size_it_den < min_sub3:
+                    min_sub3 = step_size_it * subgradients3 / step_size_it_den
 
         lp1.beta = beta.copy()
         lp1.gamma = gamma.copy()
         lp1.delta = delta.copy()
 
-        lp2.beta = beta.copy()
-        lp2.gamma = gamma.copy()
-        lp2.delta = delta.copy()
+        if not HEURISTIC_LP2:
+            lp2.beta = beta.copy()
+            lp2.gamma = gamma.copy()
+            lp2.delta = delta.copy()
+
+        try:
+            lp3.beta = beta.copy()
+            lp3.gamma = gamma.copy()
+            lp3.delta = delta.copy()
+        except:
+            pass
 
         Subgradient_t_end = time()
 
-
-        if (ZB_notlagrangian - LB_notlagrangian < minimum_bound_gap):
+        if (UB_notlagrangian - LB_notlagrangian < minimum_bound_gap):
+            # if (UB_notlagrangian - LB_notlagrangian < minimum_bound_gap):
             counter_bound += 1
             step_size = step_size / 2
-            if timelimit != None and timelimit > 0:
-                lp2.m.setParam('TimeLimit', timelimit*2)
+            if not HEURISTIC_LP2:
+                if timelimit != None and timelimit > 0:
+                    lp2.m.setParam('TimeLimit', timelimit * 2)
+                    try:
+                        lp3.m.setParam('TimeLimit', timelimit * 2)
+                    except:
+                        pass
         else:
             counter_bound = 0
-
 
         t_iteration = time()
         iteration_times_list.append(t_iteration - t_start)
 
         Heuristic_t_iter_end = time()
 
-        gap_history.append(ZB_notlagrangian - LB_notlagrangian)
-        if len(gap_history) > N_consecutive_times_gap and all(abs(((gap_history[-1]) - gap) / (gap_history[-1])) < 0.02 for gap in gap_history[-N_consecutive_times_gap:]):
+        gap_history.append(UB_notlagrangian - LB_notlagrangian)
+        if len(gap_history) > N_consecutive_times_gap and all(
+                abs(((gap_history[-1]) - gap) / (gap_history[-1])) < 0.02 for gap in
+                gap_history[-N_consecutive_times_gap:]):
             break  # Gap has stabilized, stop iterating
 
         if (step_size < minimum_stepsize):
             break
-        if (counter_bound == N_consecutive_times_bound) and iteration!=0:
+        if (counter_bound == N_consecutive_times_bound) and iteration != 0:
             break
 
         Subgradient_t = Subgradient_t_end - Subgradient_t_start
@@ -738,6 +928,7 @@ def main():
         # update the time accumulators, mins and maxes
         LP1_t_acc += lp1_t
         LP2_t_acc += lp2_t
+        LP3_t_acc += lp3_t
         LP_t_acc += lp_t
         LP2_pruning_t_acc += lp2_pruning_t
         Subgradient_t_acc += Subgradient_t
@@ -747,8 +938,10 @@ def main():
 
         LP1_t_min = min(LP1_t_min, lp1_t)
         LP2_t_min = min(LP2_t_min, lp2_t)
+        LP3_t_min = min(LP3_t_min, lp3_t)
         LP_t_min = min(LP_t_min, lp_t)
         LP2_pruning_t_min = min(LP2_pruning_t_min, lp2_pruning_t)
+        LP3_pruning_t_min = min(LP3_pruning_t_min, lp3_pruning_t)
         Subgradient_t_min = min(Subgradient_t_min, Subgradient_t)
         EnsuringFeasibility_t_min = min(EnsuringFeasibility_t_min, EnsuringFeasibility_t)
         BoundComp_t_min = min(BoundComp_t_min, BoundComp_t)
@@ -756,8 +949,10 @@ def main():
 
         LP1_t_max = max(LP1_t_max, lp1_t)
         LP2_t_max = max(LP2_t_max, lp2_t)
+        LP3_t_max = max(LP3_t_max, lp3_t)
         LP_t_max = max(LP_t_max, lp_t)
         LP2_pruning_t_max = max(LP2_pruning_t_max, lp2_pruning_t)
+        LP3_pruning_t_max = max(LP3_pruning_t_max, lp3_pruning_t)
         Subgradient_t_max = max(Subgradient_t_max, Subgradient_t)
         EnsuringFeasibility_t_max = max(EnsuringFeasibility_t_max, EnsuringFeasibility_t)
         BoundComp_t_max = max(BoundComp_t_max, BoundComp_t)
@@ -769,10 +964,16 @@ def main():
         n_constraints_oreo_lp1.append(len(lp1.m.getConstrs()))
 
         try:
-            n_binary_lp2_tmp = sum(1 for v in lp2.m.getVars() if v.VType == gp.GRB.BINARY)
-            n_integer_lp2_tmp = sum(1 for v in lp2.m.getVars() if v.VType == gp.GRB.INTEGER)
-            n_continuous_lp2_tmp = sum(1 for v in lp2.m.getVars() if v.VType == gp.GRB.CONTINUOUS)
-            n_constraints_lp2_tmp = len(lp2.m.getConstrs())
+            if not HEURISTIC_LP2:
+                n_binary_lp2_tmp = sum(1 for v in lp2.m.getVars() if v.VType == gp.GRB.BINARY)
+                n_integer_lp2_tmp = sum(1 for v in lp2.m.getVars() if v.VType == gp.GRB.INTEGER)
+                n_continuous_lp2_tmp = sum(1 for v in lp2.m.getVars() if v.VType == gp.GRB.CONTINUOUS)
+                n_constraints_lp2_tmp = len(lp2.m.getConstrs())
+            else:
+                n_binary_lp2_tmp = 0
+                n_integer_lp2_tmp = 0
+                n_continuous_lp2_tmp = 0
+                n_constraints_lp2_tmp = 0
         except:
             n_binary_lp2_tmp = 0
             n_integer_lp2_tmp = 0
@@ -786,24 +987,39 @@ def main():
 
     t_end = time()
 
-    LP1_t_avg = LP1_t_acc / (iteration+1)
-    LP2_t_avg = LP2_t_acc / (iteration+1)
-    LP2_pruning_t_avg = LP2_pruning_t_acc / (iteration+1)
-    LP_t_avg = LP_t_acc / (iteration+1)
-    Subgradient_t_avg = Subgradient_t_acc / (iteration+1)
-    EnsuringFeasibility_t_avg = EnsuringFeasibility_t_acc / (iteration+1)
-    BoundComp_t_avg = BoundComp_t_acc / (iteration+1)
-    Heuristic_t_avg = Heuristic_t_acc / (iteration+1)
-
+    try:
+        n_binary_lp3_tmp = sum(1 for v in lp3.m.getVars() if v.VType == gp.GRB.BINARY)
+        n_integer_lp3_tmp = sum(1 for v in lp3.m.getVars() if v.VType == gp.GRB.INTEGER)
+        n_continuous_lp3_tmp = sum(1 for v in lp3.m.getVars() if v.VType == gp.GRB.CONTINUOUS)
+        n_constraints_lp3_tmp = len(lp3.m.getConstrs())
+    except:
+        n_binary_lp3_tmp = 0
+        n_integer_lp3_tmp = 0
+        n_continuous_lp3_tmp = 0
+        n_constraints_lp3_tmp = 0
+    n_binary_oreo_lp3.append(n_binary_lp3_tmp)
+    n_integer_oreo_lp3.append(n_integer_lp3_tmp)
+    n_continuous_oreo_lp3.append(n_continuous_lp3_tmp)
+    n_constraints_oreo_lp3.append(n_constraints_lp3_tmp)
 
     # In[ ]:
 
+    LP1_t_avg = LP1_t_acc / (iteration + 1)
+    LP2_t_avg = LP2_t_acc / (iteration + 1)
+    LP3_t_avg = LP3_t_acc / (iteration + 1)
+    LP2_pruning_t_avg = LP2_pruning_t_acc / (iteration + 1)
+    LP3_pruning_t_avg = LP3_pruning_t_acc / (iteration + 1)
+    LP_t_avg = LP_t_acc / (iteration + 1)
+    Subgradient_t_avg = Subgradient_t_acc / (iteration + 1)
+    EnsuringFeasibility_t_avg = EnsuringFeasibility_t_acc / (iteration + 1)
+    BoundComp_t_avg = BoundComp_t_acc / (iteration + 1)
+    Heuristic_t_avg = Heuristic_t_acc / (iteration + 1)
 
     # In[ ]:
 
     LatencyList_feasible = []
     for k in best_tau_UB:
-            LatencyList_feasible.append(best_tau_UB[k])
+        LatencyList_feasible.append(best_tau_UB[k])
 
     QualityList_feasible = []
     for k in best_q_UB:
@@ -852,7 +1068,6 @@ def main():
     for k in best_rho_LB:
         if k[-1] == 'disk':
             TotDisk_unfeasible += best_rho_LB[k]
-
 
     print("\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*")
     print("*-*-*-*-*-*TOTAL OREO TIME:,", t_end - t_start,"*-*-*-*-*-*-*")

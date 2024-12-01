@@ -890,7 +890,6 @@ def xAppSelection(services, services_conf, cs_to_s, s, cs, functions_compl, miss
 
     return z,v,rho_UB,lambda_aux_UB,lambda_aux_prime,v_UB,n_aux_UB,n_aux_prime
 
-
 def ServiceQualityAdjustment(services,s,services_L,services_P,services_Q,services_conf,cs,cs_to_s,services_conf_graph_output,services_conf_graph_former,functions,functions_compl,quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,xApp_mem_req,J_MAX,budget,z_UB,v_UB,rho_UB,q_UB,n_aux_UB,lambda_aux_UB,semantic,lambda_semantic,semantic_cs,theta, current_res_utiliz):
     '''
     when selecting a new complexity, instead of selecting the deriving xApp just for the under-object service,
@@ -1156,14 +1155,10 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
                         semantic, lambda_semantic,semantic_cs, theta,
                         beta, gamma, delta,
                         xApp_mem_req,
-                        max_latency = 1, BigM = 1,normalization_factor = None):
+                        max_latency = 1, BigM = 1,normalization_factor = None, QUALITY_TUNING = False,SHARING_SCORE_COMP=1):
 
     if normalization_factor == None:
         normalization_factor = 1
-
-    z = {k: 1 if v > 0.5 else 0 for k, v in z.items()}
-    v = {k: 1 if v > 0.5 else 0 for k, v in v.items()}
-    n_aux = {k: 1 if v > 0.5 else 0 for k, v in n_aux.items()}
 
     removed_services_flag = False
 
@@ -1217,7 +1212,11 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
                         missing_f.append(f)
 
                 if len(missing_f):
-                    z, v, rho_UB, lambda_aux_UB, lambda_aux_prime, v_UB, n_aux_UB, n_aux_prime = xAppSelection(services, services_conf, cs_to_s, s, cs, functions_compl, missing_f, J_MAX, budget, z, v, rho, rho_UB, semantic, lambda_semantic, semantic_cs, lambda_aux_UB, lambda_aux_prime, theta, v_UB, n_aux_UB, n_aux_prime, xApp_mem_req,services_L, current_res_utiliz)
+                    z, v, rho_UB, lambda_aux_UB, lambda_aux_prime, v_UB, n_aux_UB, n_aux_prime = xAppSelection_extension(services, services_conf, cs_to_s, s, cs, functions_compl, missing_f, J_MAX, budget, z, v, rho, rho_UB, semantic, lambda_semantic, semantic_cs, lambda_aux_UB, lambda_aux_prime, theta, v_UB, n_aux_UB, n_aux_prime, xApp_mem_req,services_L, current_res_utiliz, SHARING_SCORE_COMP=SHARING_SCORE_COMP)
+    # t2 = time()
+    # print("Heuristic - step 2 : time",t2-t1)
+    # print("Heuristic - step 2 : implemented services:", services_count(services, services_conf, z_UB))
+    # print("Heuristic - step 2 : checking the lambda_aux")
     lambda_aux_UB = check_lambda_aux(lambda_aux_UB, functions, functions_compl, semantic, J_MAX, cs_to_s, v_UB, z_UB)
 
     # update the current_res_utiliz
@@ -1233,17 +1232,9 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
             # been instantiated to provide the requested service.
             # We start looking at the Quality
             if z_UB[s,list(cs.keys())[0]] == 1:
-                z_UB, v_UB, rho_UB, q_UB, n_aux_UB, lambda_aux_UB = ServiceQualityAdjustment(services, s, services_L, services_P, services_Q, services_conf, cs, cs_to_s, services_conf_graph_output, services_conf_graph_former, functions, functions_compl, quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c, xApp_mem_req, J_MAX, budget, z_UB, v_UB, rho_UB, q_UB, n_aux_UB, lambda_aux_UB, semantic, lambda_semantic, semantic_cs, theta, current_res_utiliz)
+                z_UB, v_UB, rho_UB, q_UB, n_aux_UB, lambda_aux_UB = ServiceQualityAdjustment_extension(services, s, services_L, services_P, services_Q, services_conf, cs, cs_to_s, services_conf_graph_output, services_conf_graph_former, functions, functions_compl, quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c, xApp_mem_req, J_MAX, budget, z_UB, v_UB, rho_UB, q_UB, n_aux_UB, lambda_aux_UB, semantic, lambda_semantic, semantic_cs, theta, current_res_utiliz)
 
     lambda_aux_UB = check_lambda_aux(lambda_aux_UB, functions, functions_compl, semantic, J_MAX, cs_to_s, v_UB, z_UB)
-
-    for cs, f, c, j in v_UB:
-        if v_UB[cs, f, c, j] == 1:
-            if n_aux_UB[f, c, j] == 0:
-                print("Heuristic - step 3 : Errore 1")
-            for r in ["disk", "mem"]:
-                if rho_UB[f, c, j, r] != xApp_mem_req[f, c, r]:
-                    print("Heuristic - step 3 : Errore 2")
 
     for s in services:
         for cs in services_conf[s]:
@@ -1251,6 +1242,7 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
             # been instantiated to provide the requested service.
             # We start looking at the Quality
             if z_UB[s,list(cs.keys())[0]] == 1:
+                # print("ServiceLatency flag - s,cs:", s,list(cs.keys())[0])
                 rho_UB_old = rho_UB.copy()
                 tau_UB_old = tau_UB.copy()
                 z_UB, v_UB, rho_UB, tau_UB, n_aux_UB, lambda_aux_UB, lambda_aux_prime = ServiceLatencyAdjustment(services, s, services_P, services_L, services_conf, cs, cs_to_s, services_conf_graph_output, services_conf_graph_former, functions, functions_compl, quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c, J_MAX, budget, z_UB, v_UB, rho_UB, tau_UB, n_aux_UB, lambda_aux_UB, lambda_aux_prime, semantic, lambda_semantic, semantic_cs, theta, max_latency)
@@ -1260,7 +1252,7 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
 
     lambda_aux_UB = check_lambda_aux(lambda_aux_UB, functions, functions_compl, semantic, J_MAX, cs_to_s, v_UB, z_UB)
 
-    # reset of n_aux_UB since in 'remove_service()' step I am facing problems
+    # reset of n_aux_UB
     for cs, f, c, j in v_UB:
         n_aux_UB[f, c, j] = 0
     for cs, f, c, j in v_UB:
@@ -1275,7 +1267,12 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
         for f,c,j,rrrr in rho_UB:
             if rrrr == r:
                 consumption += rho_UB[f, c, j, r] * n_aux_UB[f, c, j]
+        # print(r, consumption, "(budget:", budget[r], ")")
         if consumption > budget[r]:
+            # print("Heuristic - step 4a : Removing a service because", r, "resources are currently overexceeded:",
+            #       consumption, budget[r])
+            # print("Consumed:",consumption,"\tBudget:",budget[r])
+            # print("FLAG removing services for resource type",r)
             removed_services_flag = True
             z_UB, v_UB, n_aux_UB, rho_UB, q_UB, tau_UB, lambda_aux_UB = remove_service(z_UB, v_UB, n_aux_UB, rho_UB, q_UB, tau_UB, lambda_aux_UB, r, budget, consumption, functions, functions_compl, services, services_P, services_conf, semantic_cs, J_MAX, max_latency, cs_list)
         nservices_counter = 0
@@ -1304,6 +1301,7 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
                                    tau_UB, beta, gamma, delta, budget, BigM, max_latency)
     UB_notlagrangian = compute_UB(services, services_P, services_conf, functions, functions_compl, J_MAX, z_UB, rho_UB,
                                   budget)
+    # print("\nUpper bound objective function computation")
     UB_obj, UB_norm_obj = compute_objectivefunction(services,
                                                     services_P,
                                                     services_conf,
@@ -1316,14 +1314,6 @@ def EnsuringFeasibility(services, services_notprime, services_P, services_Q, ser
                                                     J_MAX,
                                                     normalization_factor = normalization_factor)
 
-    for f in functions:
-        for c in functions_compl[f]:
-            for j in range(1, J_MAX + 1):
-                counter = 0
-                for cs in cs_list:
-                    counter += v_UB[cs,f,c,j]
-                if counter < 0.5:
-                    for r in budget:
-                        rho_UB[f,c,j,r] = 0
+
 
     return z_UB, v_UB, n_aux_UB, rho_UB, UB, UB_notlagrangian, UB_obj, UB_norm_obj, q_UB, tau_UB

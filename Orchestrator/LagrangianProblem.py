@@ -119,15 +119,13 @@ class LP1:
         self.m.update()
         self.m.optimize()
 
-
 class LP2:
-    def __init__(self, services, services_P, services_Q, services_conf, services_conf_graph_output,
-                 services_conf_graph_former, J_MAX,
-                 quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
-                 xApp_mem_req, functions, functions_compl, beta, gamma, delta, budget, theta,
-                 semantic, lambda_semantic, cs_list, services_L,
-                 # v_prime, lambda_xApp, n_aux_prime, cs_list_all_f, services_all_f,
-                 max_latency = 1.0, seed_val = None, gp_printing = False, timelimit = None, MIPGap_v = None):
+    def __init__( self, services, services_P, services_Q, services_conf, services_conf_graph_output,
+                  services_conf_graph_former, J_MAX,
+                  quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
+                  xApp_mem_req, functions, functions_compl, beta, gamma, delta, budget, theta,
+                  semantic, lambda_semantic, cs_list, services_L,
+                  max_latency = 1.0, seed_val = None, gp_printing = False, timelimit = None, MIPGap_v = None):
 
         self.m = gp.Model()
         self.m.Params.LogToConsole = gp_printing # True
@@ -143,13 +141,13 @@ class LP2:
         if seed_val != None:
             self.m.setParam(gp.GRB.Param.Seed, seed_val)
         if MIPGap_v != None:
-            self.m.Params.MIPGap = MIPGap_v
+            self.m.Params.MIPGap = 0.1
             pass
 
         # #########################################################################################################
         # PARAMETERS
 
-        self.budget_mem = {r:v for r,v in budget.items()} #if r != 'cpu'}
+        self.budget_mem = {r:v for r,v in budget.items() if r != 'cpu'}
 
         self.beta = beta
         self.gamma = gamma
@@ -189,36 +187,17 @@ class LP2:
         # AUXILIARY DECISION VARIABLES
 
         # --> n_aux auxiliary variable tells if an xApp (f,c,j) is utilized by a service s
-        # --> Auxiliary variable: eta == n_aux
-        self.n_times_v = {}
-        for f in functions:
-            for c in functions_compl[f]:
-                for j in range(1, J_MAX + 1):
-                    self.n_times_v[f, c, j] = self.m.addVar(vtype = gp.GRB.INTEGER,
-                                                            name = 'n_times_v_%s_%s_%s' % (f, c, j)
-                                                            )
         self.n_aux = {}
         for f in functions:
             for c in functions_compl[f]:
                 for j in range(1, J_MAX + 1):
                     self.n_aux[f, c, j] = self.m.addVar(vtype = gp.GRB.BINARY, name = 'n_aux_%s_%s_%s' % (f, c, j))
+        for f in functions:
+            for c in functions_compl[f]:
+                for j in range(1, J_MAX + 1):
+                    self.m.addGenConstrIndicator(self.n_aux[f, c, j], True, gp.quicksum(gp.quicksum(self.v[list(cs.keys())[0], f, c, j] for cs in services_conf[s]) for s in services), gp.GRB.GREATER_EQUAL, 0.5)
+                    self.m.addGenConstrIndicator(self.n_aux[f, c, j], False, gp.quicksum(gp.quicksum(self.v[list(cs.keys())[0], f, c, j] for cs in services_conf[s]) for s in services), gp.GRB.LESS_EQUAL, 0.5)
 
-        for f in functions:
-            for c in functions_compl[f]:
-                for j in range(1, J_MAX + 1):
-                    self.m.addConstr(self.n_times_v[f, c, j] == gp.quicksum(
-                        gp.quicksum(self.v[list(cs.keys( ))[0], f, c, j] for cs in services_conf[s]) for s in services
-                    ), name = 'n_times_v_def_%s_%s_%s' % (f, c, j)
-                                     )
-        for f in functions:
-            for c in functions_compl[f]:
-                for j in range(1, J_MAX + 1):
-                    self.m.addGenConstrIndicator(self.n_aux[f, c, j], True, self.n_times_v[f, c, j],
-                                                 gp.GRB.GREATER_EQUAL, 0.5
-                                                 )
-                    self.m.addGenConstrIndicator(self.n_aux[f, c, j], False, self.n_times_v[f, c, j], gp.GRB.LESS_EQUAL,
-                                                 0.5
-                                                 )
         # --> Auxiliary variables: f_per_cs[cs,f]
         # f_per_cs tells me if, for every cs and function f, if there is or there is not an xApp providing f for cs
         # namely if it exists c,j s.t. v_[cs,f,c,j] == 1
@@ -230,7 +209,6 @@ class LP2:
                 for f in list(cs.values())[0]:
                     self.f_per_cs[list(cs.keys())[0], f] = self.m.addVar(vtype = gp.GRB.BINARY,
                                                                           name = 'f_per_cs_%s_%s' % (list(cs.keys())[0], f))
-
         for s in services:
             for cs in services_conf[s]:
                 # for f in functions:
@@ -273,41 +251,16 @@ class LP2:
                                              ), gp.GRB.GREATER_EQUAL, 0.5
                                              )
 
-        # --> Auxiliary variables: lambda_aux[f,sem]
-        self.lambda_aux = {}
-        for f in semantic:
-            for sem in semantic[f]:
-                for c in functions_compl[f]:
-                    for j in range(1, J_MAX + 1):
-                        self.lambda_aux[f,sem,c,j] = self.m.addVar(vtype = gp.GRB.BINARY,
-                                                                   name = 'lambda_aux_%s_%s_%s_%s' % (f,sem,c,j))
-
-        # --> Auxiliary variables: lambda_aux[f,sem]
-        for f in semantic:
-            for sem in semantic[f]:
-                for c in functions_compl[f]:
-                    for j in range(1, J_MAX + 1):
-                        self.m.addGenConstrIndicator(self.lambda_aux[f,sem,c,j],
-                                                     1.0,
-                                                     gp.quicksum(self.v[cs,f,c,j] for cs in semantic[f][sem]),
-                                                     gp.GRB.GREATER_EQUAL,
-                                                     0.5)
-                        self.m.addGenConstrIndicator(self.lambda_aux[f,sem,c,j],
-                                                     0.0,
-                                                     gp.quicksum(self.v[cs,f,c,j] for cs in semantic[f][sem]),
-                                                     gp.GRB.LESS_EQUAL,
-                                                     0.5
-                                                     )
-
         # --> Auxiliary variables: q[cs]
         # The variable q[cs] tells the nominal quality with which the service s in configuration cs has delivered
         self.q = {}
         for s in services:
             for cs in services_conf[s]:
                 self.q[list(cs.keys())[0]] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
-                                                           name = 'q_%s' % (list(cs.keys())[0]))
-
-
+                                                            lb = 0,
+                                                            ub = 2,
+                                                            name = 'q_%s' % (list(cs.keys())[0])
+                                                            )
         # --> Auxiliary variables: q_computed[cs]
         # --> Auxiliary variables: q_computed_multiplier[cs]
         # The variables q_computed[cs] and q_computed_multiplier[cs] are used to compute the quality of the service s
@@ -323,13 +276,14 @@ class LP2:
         self.q_computed_multiplier = {}
         for s in services:
             for cs in services_conf[s]:
-                self.q_computed_multiplier[list(cs.keys( ))[0]] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
-                                                                                name = 'q_computed_multiplier_%s' % (list(cs.keys( ))[0]))
-                self.m.addConstr(self.q_computed_multiplier[list(cs.keys( ))[0]] == gp.quicksum(gp.quicksum(gp.quicksum(
-                    self.v[list(cs.keys( ))[0], f, c, j] * (f_multiplier[f] + f_multiplier_c[f] * (c))
-                    for j in range(1, J_MAX + 1)) for c in functions_compl[f]) for f in list(cs.values( ))[0]),
-                                 name = 'q_computed_multiplier_%s' % (list(cs.keys( ))[0]))
-
+                self.q_computed_multiplier[list(cs.keys())[0]] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
+                                                                                name = 'q_computed_multiplier_%s' % (list(cs.keys())[0]))
+        for s in services:
+            for cs in services_conf[s]:
+                self.m.addConstr(self.q_computed_multiplier[list(cs.keys())[0]] == gp.quicksum(gp.quicksum(gp.quicksum(
+                    self.v[list(cs.keys())[0], f, c, j] * (f_multiplier[f] + f_multiplier_c[f] * (c))
+                    for j in range(1, J_MAX + 1)) for c in functions_compl[f]) for f in list(cs.values())[0]),
+                                 name = 'q_computed_multiplier_%s' % (list(cs.keys())[0]))
         for s in services:
             for cs in services_conf[s]:
                 self.m.addGenConstrPWL(
@@ -337,11 +291,10 @@ class LP2:
                     #     self.v[list(cs.keys())[0], f, c, j] * self.q_computed_multiplier[f,c]
                     #     for j in range(1, J_MAX + 1)) for c in functions_compl[f]) for f in functions), # x
                     xvar=self.q_computed_multiplier[list(cs.keys())[0]], # x
-                    yvar=self.q_computed[list(cs.keys( ))[0]], # y
+                    yvar=self.q_computed[list(cs.keys())[0]], # y
                     xpts=list(quality_mapping_x[list(cs.keys())[0]]), # x pts
                     ypts=list(quality_mapping_q[list(cs.keys())[0]]), # y pts
                     name="quality_table_%s" % (list(cs.keys())[0]))
-
 
         for s in services:
             for cs in services_conf[s]:
@@ -353,71 +306,6 @@ class LP2:
                 # self.m.addConstr(self.q[list(cs.keys())[0]] == self.q_computed[list(cs.keys())[0]],
                 #                  name = 'q_def_%s' % (list(cs.keys())[0]))
 
-        self.tau_aux_1 = {}
-        for f, c, j in self.n_aux:
-            self.tau_aux_1[f, c, j, 'cpu'] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
-                                                      # lb = 0.0,
-                                                      lb = -float('inf'),
-                                                      ub = float('inf'),
-                                                      # ub = max_latency,
-                                                      name = 'tau_aux_1_%s_%s_%s_%s' % (f, c, j, 'cpu')
-                                                      )
-        for f, c, j in self.n_aux:
-            self.m.addConstr(self.tau_aux_1[f, c, j, 'cpu'] *
-                             (self.rho[f, c, j, 'cpu'] * self.theta[f, c] - gp.quicksum(
-                                         self.lambda_aux[f,sem,c,j] * lambda_semantic[f][sem] for sem in semantic[f])) == 1,
-                             name = 'tau_aux_1_def_selectedxApp_%s_%s_%s' % (f, c, j))
-
-        # # --> Auxiliary variables: tau[cs]
-        self.tau = {}
-        for cs in cs_list:
-            self.tau[cs] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
-                                                         lb = 0.0,
-                                                         # lb = -1*float('inf'),
-                                                         # ub = max_latency,
-                                                         ub = 1000,
-                                                         # ub = float('inf'),
-                                                         name = 'tau_%s' % (cs)
-                                                         )
-        # --> Definition of auxiliary variable: tau[cs]
-        for cs in cs_list:
-            self.m.addConstr(self.tau[cs] == gp.quicksum(self.tau_aux_1[f, c, j, 'cpu']*self.v[cs,f,c,j] for f, c, j in self.n_aux),
-                             name = 'tau_def_%s' % (cs))
-            '''Abbiamo tolto self.all_f_per_cs perchè sempre valore unitario. Guarda sopra per info'''
-
-        # #########################################################################################################
-        # rho[CPU] SUBDOMAINs
-        # rho[cpu] can either takes 0 value - when the xApp is not instantiated (as we will see, n_aux[f,c,j] = 0
-        # or rho[cpu] can takes values larger than  - when the xApp is not instantiated (as we will see, n_aux[f,c,j] = 0
-        max_theta = -1
-        min_theta = 999
-        for f, c, j in self.n_aux:
-                if theta[f, c] > max_theta:
-                    max_theta = theta[f, c]
-                elif min_theta > theta[f, c]:
-                    min_theta = theta[f, c]
-
-        max_lambda = -1
-        min_lambda = 999
-        for f in lambda_semantic:
-            lambda_function = 0
-            for sem in lambda_semantic[f]:
-                lambda_function += lambda_semantic[f][sem]
-            if lambda_function > max_lambda:
-                max_lambda = lambda_function
-            elif min_lambda > lambda_function and lambda_function>0:
-                min_lambda = lambda_function
-
-        rho_lb = ((1/max_latency) + min_lambda) / max_theta
-
-        for f,c,j in self.n_aux:
-            # self.m.addConstr(rho_lb * self.n_aux[f, c, j] <= self.rho[f, c, j, 'cpu'], 'rho_LB_subdomain_constr_%s_%s_%s' % (f, c, j))
-            self.m.addConstr(0.01 <= self.rho[f, c, j, 'cpu'], 'rho_LB_subdomain_constr_%s_%s_%s' % (f, c, j))
-            self.m.addConstr(self.rho[f, c, j, 'cpu'] <= self.budget_mem['cpu'] * self.n_aux[f, c, j] + 0.01, 'rho_UB_subdomain_constr_%s_%s_%s' % (f, c, j))
-
-
-
-
         # #########################################################################################################
         # CONSTRAINTS
         if True: # PRUNING: it is necessary to apply pruning with LP1, LP2 and LP3
@@ -428,7 +316,7 @@ class LP2:
                     for f in list(cs.values())[0]:
                         self.m.addConstr(gp.quicksum(gp.quicksum(
                                 self.v[list(cs.keys())[0], f, c, j]
-                                for c in functions_compl[f]) for j in range(1, J_MAX + 1)) == 1,
+                                for c in functions_compl[f]) for j in range(1, J_MAX + 1)) <= 1,
                             'xApp_per_f_%s_%s_%s' %(s, list(cs.keys())[0], f))
         # else:
         #     # --> Constraints: at most one xApp per f \in cs
@@ -489,11 +377,194 @@ class LP2:
                     for j in range(1, J_MAX + 1)) for c in functions_compl[f])for f in list(cs.values())[0])
                 for cs in services_conf[s]) for s in services) +
             (-1) * gp.quicksum(gp.quicksum((-1/3) * self.rho[f,c,j,r] / self.budget_mem[r]
-                 for r in self.budget_mem) for (f,c,j) in self.n_aux) + \
-            (-1) * gp.quicksum(gp.quicksum(
-                -1 * self.tau[list(cs.keys( ))[0]] * self.delta[s, list(cs.keys( ))[0]] for cs in services_conf[s]) for s in services),
+                 for r in self.budget_mem) for (f,c,j) in self.n_aux),
             gp.GRB.MINIMIZE)
 
     def optimize(self):
         self.m.update()
+        self.m.optimize()
+
+class LP3:
+    def __init__( self, services, services_P, services_Q, services_conf, services_conf_graph_output,
+                  services_conf_graph_former, J_MAX,
+                  quality_mapping_x, quality_mapping_q, f_multiplier, f_multiplier_c,
+                  xApp_mem_req, functions, functions_compl, beta, gamma, delta, budget, theta,
+                  semantic, lambda_semantic, cs_list, services_L,
+                  v_prime, lambda_xApp, n_aux_prime,
+                  cs_list_all_f,services_all_f,
+                  max_latency = 1.0, seed_val = None, gp_printing = False, timelimit = None, MIPGap_v = None):
+
+        self.budget_cpu = {'cpu' : budget['cpu']}
+
+        self.m = gp.Model()
+        self.m.Params.LogToConsole = gp_printing # True
+        self.m.Params.OutputFlag = gp_printing # True
+        self.m.Params.MIPGapAbs = 0.01
+        # self.m.Params.InfUnbdInfo = 1
+        # self.m.Params.LPWarmStart = 1
+        # self.m.Params.Presolve = -1
+        self.m.Params.MIPFocus = 3
+        # self.m.Params.Cuts = 0
+        # self.m.Params.Heuristics = 0.1
+        self.m.Params.NonConvex = 2
+        if timelimit != None and timelimit > 0:
+            self.m.setParam('TimeLimit', timelimit)
+        if seed_val != None:
+            self.m.setParam(gp.GRB.Param.Seed, seed_val)
+        if MIPGap_v != None:
+            self.m.Params.MIPGap = 0.1
+            pass
+
+        # #########################################################################################################
+        # PARAMETERS
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+
+        self.theta = theta
+        self.cs_list = cs_list
+
+        # #########################################################################################################
+        self.n_aux_prime = n_aux_prime
+        self.v_prime = v_prime
+        self.lambda_xApp = lambda_xApp
+
+        # #########################################################################################################
+        # DECISION VARIABLES
+
+        # --> xApp resource allocation
+        self.rho = {}
+        for f,c,j in self.n_aux_prime:
+            for r in self.budget_cpu:
+                self.rho[f, c, j, r] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
+                                                     lb = 0.0,
+                                                     # lb = -float('inf'),
+                                                     ub = self.budget_cpu[r],
+                                                     name = 'rho_%s_%s_%s_%s' % (f, c, j, r))
+
+        # #########################################################################################################
+        # AUXILIARY DECISION VARIABLES
+
+        # # --> Auxiliary variables: tau_aux_1[f, c, j, r]
+        # tau_aux_1 will be defined as 1/(rho*sigma - theta) by adding an auxiliary constraint: (rho*sigma - theta) * tau_aux_1 =1
+        # this step is required because tau = 1/(rho*sigma - theta), but gurobi does not support dividing by variables
+        self.tau_aux_1 = {}
+        for f, c, j in self.n_aux_prime:
+            self.tau_aux_1[f, c, j, 'cpu'] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
+                                                      # lb = 0.0,
+                                                      lb = -float('inf'),
+                                                      ub = float('inf'),
+                                                      # ub = max_latency,
+                                                      name = 'tau_aux_1_%s_%s_%s_%s' % (f, c, j, 'cpu')
+                                                      )
+        for f, c, j in self.n_aux_prime:
+            self.m.addConstr(self.tau_aux_1[f, c, j, 'cpu'] *
+                             (self.rho[f, c, j, 'cpu'] * self.theta[f, c] - self.lambda_xApp[f,c,j]) == 1,
+                             name = 'tau_aux_1_def_selectedxApp_%s_%s_%s' % (f, c, j))
+
+        # # --> Auxiliary variables: tau[cs]
+        self.tau = {}
+        for cs in cs_list:
+            self.tau[cs] = self.m.addVar(vtype = gp.GRB.CONTINUOUS,
+                                                         lb = 0.0,
+                                                         # lb = -1*float('inf'),
+                                                         # ub = max_latency,
+                                                         ub = 1000,
+                                                         # ub = float('inf'),
+                                                         name = 'tau_%s' % (cs)
+                                                         )
+        # --> Definition of auxiliary variable: tau[cs]
+        for cs in cs_list:
+            if cs in cs_list_all_f:
+                self.m.addConstr(self.tau[cs] == gp.quicksum(self.tau_aux_1[f, c, j, 'cpu']*self.v_prime[cs,f,c,j] for f, c, j in self.n_aux_prime),
+                                 name = 'tau_def_%s' % (cs))
+            else:
+                self.m.addConstr(self.tau[cs] == max_latency,
+                                 name = 'tau_def_%s' % (cs))
+            '''Abbiamo tolto self.all_f_per_cs perchè sempre valore unitario. Guarda sopra per info'''
+
+
+
+        # #########################################################################################################
+        # rho SUBDOMAINs
+        # rho[cpu] can either takes 0 value - when the xApp is not instantiated (as we will see, n_aux[f,c,j] = 0
+        # or rho[cpu] can takes values larger than  - when the xApp is not instantiated (as we will see, n_aux[f,c,j] = 0
+
+        max_theta = -1
+        min_theta = 999
+        for f, c, j in self.n_aux_prime:
+                if theta[f, c] > max_theta:
+                    max_theta = theta[f, c]
+                elif min_theta > theta[f, c]:
+                    min_theta = theta[f, c]
+
+        max_lambda = -1
+        min_lambda = 999
+        for f in lambda_semantic:
+            lambda_function = 0
+            for sem in lambda_semantic[f]:
+                lambda_function += lambda_semantic[f][sem]
+            if lambda_function > max_lambda:
+                max_lambda = lambda_function
+            elif min_lambda > lambda_function and lambda_function>0:
+                min_lambda = lambda_function
+
+        rho_lb = ((1/max_latency) + min_lambda) / max_theta
+
+        for f,c,j in self.n_aux_prime:
+            # self.m.addConstr(rho_lb * self.n_aux_prime[f, c, j] <= self.rho[f, c, j, 'cpu'], 'rho_LB_subdomain_constr_%s_%s_%s' % (f, c, j))
+            self.m.addConstr(0.01 <= self.rho[f, c, j, 'cpu'], 'rho_LB_subdomain_constr_%s_%s_%s' % (f, c, j))
+            self.m.addConstr(self.rho[f, c, j, 'cpu'] <= self.budget_cpu['cpu'] * self.n_aux_prime[f, c, j] + 0.01, 'rho_UB_subdomain_constr_%s_%s_%s' % (f, c, j))
+
+
+        # #########################################################################################################
+        # CONSTRAINTS
+
+        # --> Constraints: MEMORY/DISK : allocate mem requirements for implemented xApps
+        #                                do not reserve resources for not implemented xApps
+        # for f,c, j in self.n_aux_prime:
+        #     for r in budget:
+        #         if r != 'cpu':
+        #             self.m.addConstr(self.rho[f, c, j, r] == self.n_aux_prime[f, c, j] * xApp_mem_req[f,c,r],
+        #                              'resource_domain_%s_%s_%s_%s' % (f, c, j, r)
+        #                              )
+
+        # --> resource budget
+        for r in self.budget_cpu:
+            self.m.addConstr(gp.quicksum(self.rho[f, c, j, r] for f,c,j in self.n_aux_prime) <= self.budget_cpu[r],
+                'budget_%s' % (r))
+
+        # #########################################################################################################
+        # OBJECTIVE FUNCTION
+
+        self.m.update()
+        self.set_obj(services, services_conf, functions, functions_compl, J_MAX, self.budget_cpu, services_L)
+
+    def set_obj(self, services, services_conf, functions, functions_compl, J_MAX, budget, services_L):
+
+        self.m.setObjective(
+            (-1) * gp.quicksum(gp.quicksum(
+                (-1/3) * self.rho[f, c, j, r] / self.budget_cpu[r] for r in self.budget_cpu) for f, c, j in self.n_aux_prime) + \
+            (-1) * gp.quicksum(gp.quicksum(
+                -1 * self.tau[list(cs.keys())[0]] * self.delta[s,list(cs.keys())[0]] for cs in services_conf[s]) for s in services),
+                gp.GRB.MINIMIZE)
+        # self.m.setObjective(
+        #     gp.quicksum(gp.quicksum(gp.quicksum(gp.quicksum(
+        #         (1/3) * self.rho[f, c, j, r] / budget[r]
+        #     for r in budget) for j in range(1, J_MAX + 1)) for c in functions_compl[f]) for f in functions) + \
+        #     gp.quicksum(gp.quicksum(gp.quicksum(gp.quicksum(gp.quicksum(
+        #         (-1) * self.beta[s, list(cs.keys())[0], f] * self.v[list(cs.keys())[0], f, c, j]
+        #     for j in range(1, J_MAX + 1)) for c in functions_compl[f]) for f in list(cs.values())[0]) for cs in services_conf[s]) for s in services) + \
+        #     gp.quicksum(gp.quicksum(
+        #         (-1) * self.gamma[s, list(cs.keys())[0]] * self.q[list(cs.keys())[0]]
+        #     for cs in services_conf[s]) for s in services) + \
+        #     gp.quicksum(gp.quicksum(
+        #         self.delta[s, list(cs.keys())[0]] * (self.tau[list(cs.keys())[0]] - services_L[s])
+        #     for cs in services_conf[s]) for s in services),
+        #     gp.GRB.MINIMIZE
+        # )
+
+    def optimize(self):
+        self.m.update()
+        # print("LP3 OPTIMIZATION updated")
         self.m.optimize()
